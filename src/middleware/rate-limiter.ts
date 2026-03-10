@@ -1,6 +1,6 @@
 import rateLimit from 'express-rate-limit';
 import RedisStore from 'rate-limit-redis';
-import type Redis from 'ioredis';
+import type { Redis } from 'ioredis';
 
 /**
  * Creates rate limiting middleware instances for different endpoint categories.
@@ -36,7 +36,7 @@ export function createRateLimiters(redisClient: Redis) {
     max: 10,
     standardHeaders: true,
     legacyHeaders: false,
-    keyGenerator: (req) => req.user?.userId ?? req.ip ?? 'unknown',
+    keyGenerator: (req) => req.user?.userId ?? 'anonymous',
     store: createStore('rl:upload:'),
     message: { success: false, error: { code: 'RATE_LIMIT', message: 'Too many upload requests. Please try again later.' } },
   });
@@ -50,7 +50,7 @@ export function createRateLimiters(redisClient: Redis) {
     max: 100,
     standardHeaders: true,
     legacyHeaders: false,
-    keyGenerator: (req) => req.user?.userId ?? req.ip ?? 'unknown',
+    keyGenerator: (req) => req.user?.userId ?? 'anonymous',
     store: createStore('rl:api:'),
     message: { success: false, error: { code: 'RATE_LIMIT', message: 'Too many requests. Please try again later.' } },
   });

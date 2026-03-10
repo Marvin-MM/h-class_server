@@ -89,7 +89,7 @@ export function createApp(container: Container) {
   app.use(`${v1}/admin`, createAdminRouter(container.adminController, authMiddleware));
 
   // ─── 404 Handler ───────────────────────────────────────────────
-  app.use('*', (_req, res) => {
+  app.use((_req, res) => {
     res.status(404).json({
       success: false,
       error: { code: 'NOT_FOUND', message: 'The requested resource was not found' },

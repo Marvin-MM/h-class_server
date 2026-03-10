@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import type Redis from 'ioredis';
+import type { Redis } from 'ioredis';
 import { AuthenticationError } from '../shared/errors/index.js';
 import type { AppConfig } from '../config/index.js';
 

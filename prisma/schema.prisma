@@ -1,15 +1,311 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
-// ─── Enums ───────────────────────────────────────────────────────────────────
+model User {
+  id                String             @id @default(uuid())
+  email             String             @unique
+  password          String
+  firstName         String
+  lastName          String
+  role              Role               @default(STUDENT)
+  avatarUrl         String?
+  stripeConnectId   String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  deletedAt         DateTime?
+  auditLogs         AuditLog[]
+  calendarEvents    CalendarEvent[]
+  certificates      Certificate[]
+  tutoredCourses    Course[]           @relation("TutorCourses")
+  domains           Domain[]
+  enrollments       Enrollment[]
+  notes             Note[]
+  notifications     Notification[]
+  submissions       Submission[]
+  transactions      Transaction[]
+  tutorApplications TutorApplication[]
+  pushTokens        UserPushToken[]
+
+  @@index([deletedAt])
+  @@index([email])
+  @@map("users")
+}
+
+model TutorApplication {
+  id           String            @id @default(uuid())
+  userId       String
+  status       ApplicationStatus @default(PENDING)
+  denialReason String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  user         User              @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@map("tutor_applications")
+}
+
+model Course {
+  id             String        @id @default(uuid())
+  tutorId        String
+  title          String
+  description    String
+  status         CourseStatus  @default(DRAFT)
+  price          Decimal       @db.Decimal(10, 2)
+  passMark       Decimal       @db.Decimal(5, 2)
+  commissionRate Decimal       @db.Decimal(5, 2)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime?
+  assessments    Assessment[]
+  certificates   Certificate[]
+  tutor          User          @relation("TutorCourses", fields: [tutorId], references: [id])
+  enrollments    Enrollment[]
+  notes          Note[]
+  sessions       Session[]
+  transactions   Transaction[]
+
+  @@index([tutorId])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("courses")
+}
+
+model Enrollment {
+  id           String        @id @default(uuid())
+  userId       String
+  courseId     String
+  createdAt    DateTime      @default(now())
+  course       Course        @relation(fields: [courseId], references: [id])
+  user         User          @relation(fields: [userId], references: [id])
+  transactions Transaction[]
+
+  @@unique([userId, courseId])
+  @@index([userId])
+  @@index([courseId])
+  @@map("enrollments")
+}
+
+model Session {
+  id              String          @id @default(uuid())
+  courseId        String
+  title           String
+  scheduledAt     DateTime
+  duration        Int
+  status          SessionStatus   @default(SCHEDULED)
+  getStreamCallId String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  calendarEvents  CalendarEvent[]
+  notes           Note[]
+  course          Course          @relation(fields: [courseId], references: [id])
+
+  @@index([courseId])
+  @@index([status])
+  @@index([scheduledAt])
+  @@map("sessions")
+}
+
+model Note {
+  id        String   @id @default(uuid())
+  courseId  String
+  sessionId String?
+  tutorId   String
+  title     String
+  s3Key     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  course    Course   @relation(fields: [courseId], references: [id])
+  session   Session? @relation(fields: [sessionId], references: [id])
+  tutor     User     @relation(fields: [tutorId], references: [id])
+
+  @@index([courseId])
+  @@index([sessionId])
+  @@map("notes")
+}
+
+model Assessment {
+  id          String         @id @default(uuid())
+  courseId    String
+  title       String
+  type        AssessmentType
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  course      Course         @relation(fields: [courseId], references: [id])
+  submissions Submission[]
+
+  @@index([courseId])
+  @@index([type])
+  @@map("assessments")
+}
+
+model Submission {
+  id           String     @id @default(uuid())
+  assessmentId String
+  studentId    String
+  s3Key        String
+  score        Decimal?   @db.Decimal(5, 2)
+  feedback     String?
+  gradedAt     DateTime?
+  createdAt    DateTime   @default(now())
+  assessment   Assessment @relation(fields: [assessmentId], references: [id])
+  student      User       @relation(fields: [studentId], references: [id])
+
+  @@unique([assessmentId, studentId])
+  @@index([assessmentId])
+  @@index([studentId])
+  @@map("submissions")
+}
+
+model Certificate {
+  id             String            @id @default(uuid())
+  studentId      String
+  courseId       String
+  status         CertificateStatus @default(PENDING)
+  data           Json?
+  certificateUid String            @unique @default(uuid())
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  course         Course            @relation(fields: [courseId], references: [id])
+  student        User              @relation(fields: [studentId], references: [id])
+
+  @@index([studentId])
+  @@index([courseId])
+  @@map("certificates")
+}
+
+model Transaction {
+  id                    String     @id @default(uuid())
+  enrollmentId          String
+  userId                String
+  courseId              String
+  grossAmount           Decimal    @db.Decimal(10, 2)
+  platformFee           Decimal    @db.Decimal(10, 2)
+  tutorNetAmount        Decimal    @db.Decimal(10, 2)
+  currency              String     @default("usd")
+  stripePaymentIntentId String     @unique
+  commissionRate        Decimal    @db.Decimal(5, 2)
+  createdAt             DateTime   @default(now())
+  course                Course     @relation(fields: [courseId], references: [id])
+  enrollment            Enrollment @relation(fields: [enrollmentId], references: [id])
+  user                  User       @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([courseId])
+  @@index([stripePaymentIntentId])
+  @@map("transactions")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String
+  message   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([read])
+  @@map("notifications")
+}
+
+model UserPushToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  platform  String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("user_push_tokens")
+}
+
+model ChatChannel {
+  id                 String      @id @default(uuid())
+  type               ChannelType
+  courseId           String?
+  getStreamChannelId String      @unique
+  createdAt          DateTime    @default(now())
+
+  @@index([type])
+  @@index([courseId])
+  @@map("chat_channels")
+}
+
+model Domain {
+  id                    String       @id @default(uuid())
+  userId                String
+  subdomain             String       @unique
+  status                DomainStatus @default(PENDING)
+  cloudflareDnsRecordId String?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+  user                  User         @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@map("domains")
+}
+
+model ReservedSubdomain {
+  id        String @id @default(uuid())
+  subdomain String @unique
+
+  @@map("reserved_subdomains")
+}
+
+model CalendarEvent {
+  id        String   @id @default(uuid())
+  userId    String
+  sessionId String
+  title     String
+  startsAt  DateTime
+  endsAt    DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  session   Session  @relation(fields: [sessionId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([sessionId])
+  @@index([startsAt, endsAt])
+  @@map("calendar_events")
+}
+
+model AppConfig {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+
+  @@map("app_config")
+}
+
+model AuditLog {
+  id           String   @id @default(uuid())
+  actorId      String?
+  action       String
+  resourceType String
+  resourceId   String
+  before       Json?
+  after        Json?
+  createdAt    DateTime @default(now())
+  actor        User?    @relation(fields: [actorId], references: [id])
+
+  @@index([actorId])
+  @@index([resourceType])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
 
 enum Role {
   STUDENT
@@ -58,336 +354,4 @@ enum DomainStatus {
   PENDING
   ACTIVE
   FAILED
-}
-
-// ─── Models ──────────────────────────────────────────────────────────────────
-
-model User {
-  id              String    @id @default(uuid())
-  email           String    @unique
-  password        String
-  firstName       String
-  lastName        String
-  role            Role      @default(STUDENT)
-  avatarUrl       String?
-  stripeConnectId String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  deletedAt       DateTime?
-
-  // Relations
-  tutorApplications TutorApplication[]
-  tutoredCourses    Course[]           @relation("TutorCourses")
-  enrollments       Enrollment[]
-  submissions       Submission[]
-  certificates      Certificate[]
-  notifications     Notification[]
-  pushTokens        UserPushToken[]
-  domains           Domain[]
-  calendarEvents    CalendarEvent[]
-  transactions      Transaction[]
-  notes             Note[]
-  auditLogs         AuditLog[]
-
-  @@index([deletedAt])
-  @@index([email])
-  @@map("users")
-}
-
-model TutorApplication {
-  id           String            @id @default(uuid())
-  userId       String
-  status       ApplicationStatus @default(PENDING)
-  denialReason String?
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
-
-  // Relations
-  user User @relation(fields: [userId], references: [id])
-
-  @@index([userId])
-  @@index([status])
-  @@map("tutor_applications")
-}
-
-model Course {
-  id             String       @id @default(uuid())
-  tutorId        String
-  title          String
-  description    String
-  status         CourseStatus @default(DRAFT)
-  price          Decimal      @db.Decimal(10, 2)
-  passMark       Decimal      @db.Decimal(5, 2)
-  commissionRate Decimal      @db.Decimal(5, 2)
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  deletedAt      DateTime?
-
-  // Relations
-  tutor        User          @relation("TutorCourses", fields: [tutorId], references: [id])
-  enrollments  Enrollment[]
-  sessions     Session[]
-  notes        Note[]
-  assessments  Assessment[]
-  certificates Certificate[]
-  transactions Transaction[]
-
-  @@index([tutorId])
-  @@index([status])
-  @@index([deletedAt])
-  @@map("courses")
-}
-
-model Enrollment {
-  id        String   @id @default(uuid())
-  userId    String
-  courseId   String
-  createdAt DateTime @default(now())
-
-  // Relations
-  user         User          @relation(fields: [userId], references: [id])
-  course       Course        @relation(fields: [courseId], references: [id])
-  transactions Transaction[]
-
-  @@unique([userId, courseId])
-  @@index([userId])
-  @@index([courseId])
-  @@map("enrollments")
-}
-
-model Session {
-  id               String        @id @default(uuid())
-  courseId          String
-  title            String
-  scheduledAt      DateTime
-  duration         Int           // Duration in minutes
-  status           SessionStatus @default(SCHEDULED)
-  getStreamCallId  String?
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
-
-  // Relations
-  course         Course          @relation(fields: [courseId], references: [id])
-  notes          Note[]
-  calendarEvents CalendarEvent[]
-
-  @@index([courseId])
-  @@index([status])
-  @@index([scheduledAt])
-  @@map("sessions")
-}
-
-model Note {
-  id        String   @id @default(uuid())
-  courseId   String
-  sessionId String?
-  tutorId   String
-  title     String
-  s3Key     String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  course  Course   @relation(fields: [courseId], references: [id])
-  session Session? @relation(fields: [sessionId], references: [id])
-  tutor   User     @relation(fields: [tutorId], references: [id])
-
-  @@index([courseId])
-  @@index([sessionId])
-  @@map("notes")
-}
-
-model Assessment {
-  id        String         @id @default(uuid())
-  courseId   String
-  title     String
-  type      AssessmentType
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
-
-  // Relations
-  course      Course       @relation(fields: [courseId], references: [id])
-  submissions Submission[]
-
-  @@index([courseId])
-  @@index([type])
-  @@map("assessments")
-}
-
-model Submission {
-  id           String    @id @default(uuid())
-  assessmentId String
-  studentId    String
-  s3Key        String
-  score        Decimal?  @db.Decimal(5, 2)
-  feedback     String?
-  gradedAt     DateTime?
-  createdAt    DateTime  @default(now())
-
-  // Relations
-  assessment Assessment @relation(fields: [assessmentId], references: [id])
-  student    User       @relation(fields: [studentId], references: [id])
-
-  @@unique([assessmentId, studentId])
-  @@index([assessmentId])
-  @@index([studentId])
-  @@map("submissions")
-}
-
-model Certificate {
-  id             String            @id @default(uuid())
-  studentId      String
-  courseId        String
-  status         CertificateStatus @default(PENDING)
-  data           Json?
-  certificateUid String            @unique @default(uuid())
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
-
-  // Relations
-  student User   @relation(fields: [studentId], references: [id])
-  course  Course @relation(fields: [courseId], references: [id])
-
-  @@index([studentId])
-  @@index([courseId])
-  @@map("certificates")
-}
-
-model Transaction {
-  id                    String   @id @default(uuid())
-  enrollmentId          String
-  userId                String
-  courseId               String
-  grossAmount           Decimal  @db.Decimal(10, 2)
-  platformFee           Decimal  @db.Decimal(10, 2)
-  tutorNetAmount        Decimal  @db.Decimal(10, 2)
-  currency              String   @default("usd")
-  stripePaymentIntentId String   @unique
-  commissionRate        Decimal  @db.Decimal(5, 2)
-  createdAt             DateTime @default(now())
-
-  // Relations
-  enrollment Enrollment @relation(fields: [enrollmentId], references: [id])
-  user       User       @relation(fields: [userId], references: [id])
-  course     Course     @relation(fields: [courseId], references: [id])
-
-  @@index([userId])
-  @@index([courseId])
-  @@index([stripePaymentIntentId])
-  @@map("transactions")
-}
-
-model Notification {
-  id        String   @id @default(uuid())
-  userId    String
-  title     String
-  message   String
-  read      Boolean  @default(false)
-  createdAt DateTime @default(now())
-
-  // Relations
-  user User @relation(fields: [userId], references: [id])
-
-  @@index([userId])
-  @@index([read])
-  @@map("notifications")
-}
-
-model UserPushToken {
-  id        String   @id @default(uuid())
-  userId    String
-  token     String   @unique
-  platform  String
-  createdAt DateTime @default(now())
-
-  // Relations
-  user User @relation(fields: [userId], references: [id])
-
-  @@index([userId])
-  @@map("user_push_tokens")
-}
-
-model ChatChannel {
-  id                 String      @id @default(uuid())
-  type               ChannelType
-  courseId            String?
-  getStreamChannelId String      @unique
-  createdAt          DateTime    @default(now())
-
-  @@index([type])
-  @@index([courseId])
-  @@map("chat_channels")
-}
-
-model Domain {
-  id                    String       @id @default(uuid())
-  userId                String
-  subdomain             String       @unique
-  status                DomainStatus @default(PENDING)
-  cloudflareDnsRecordId String?
-  createdAt             DateTime     @default(now())
-  updatedAt             DateTime     @updatedAt
-
-  // Relations
-  user User @relation(fields: [userId], references: [id])
-
-  @@index([userId])
-  @@index([status])
-  @@map("domains")
-}
-
-model ReservedSubdomain {
-  id        String @id @default(uuid())
-  subdomain String @unique
-
-  @@map("reserved_subdomains")
-}
-
-model CalendarEvent {
-  id        String   @id @default(uuid())
-  userId    String
-  sessionId String
-  title     String
-  startsAt  DateTime
-  endsAt    DateTime
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  user    User    @relation(fields: [userId], references: [id])
-  session Session @relation(fields: [sessionId], references: [id])
-
-  @@index([userId])
-  @@index([sessionId])
-  @@index([startsAt, endsAt])
-  @@map("calendar_events")
-}
-
-model AppConfig {
-  id        String   @id @default(uuid())
-  key       String   @unique
-  value     String
-  updatedAt DateTime @updatedAt
-
-  @@map("app_config")
-}
-
-model AuditLog {
-  id           String   @id @default(uuid())
-  actorId      String?
-  action       String
-  resourceType String
-  resourceId   String
-  before       Json?
-  after        Json?
-  createdAt    DateTime @default(now())
-
-  // Relations
-  actor User? @relation(fields: [actorId], references: [id])
-
-  @@index([actorId])
-  @@index([resourceType])
-  @@index([action])
-  @@index([createdAt])
-  @@map("audit_logs")
 }

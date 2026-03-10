@@ -1,4 +1,4 @@
-import type Redis from 'ioredis';
+import type { Redis } from 'ioredis';
 import type { UsersRepository } from './repository.js';
 import type { UpdateProfileDto } from './dto.js';
 import type { UserProfileResponse } from './types.js';

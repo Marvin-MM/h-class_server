@@ -43,7 +43,7 @@ async function main(): Promise<void> {
 
       try {
         // Disconnect from databases and services
-        await container.prisma.$disconnect();
+        await container.basePrisma.$disconnect();
         logger.info('Prisma client disconnected');
 
         container.redis.disconnect();
@@ -80,6 +80,8 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
-  logger.error('Failed to start server', { error });
+  logger.error('Failed to start server', {
+    error: error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : error,
+  });
   process.exit(1);
 });

@@ -1,7 +1,7 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { nanoid } from 'nanoid';
-import type Redis from 'ioredis';
+import type { Redis } from 'ioredis';
 import type { Queue } from 'bullmq';
 import type { AppConfig } from '../../config/index.js';
 import { AuthRepository } from './repository.js';

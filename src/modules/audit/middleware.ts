@@ -1,10 +1,10 @@
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type PrismaClient = any;
+import { Prisma, PrismaClient } from '@prisma/client';
 import { asyncContext } from '../../shared/utils/async-context.js';
 import { logger } from '../../shared/utils/logger.js';
 
 /**
- * Prisma middleware for automatic audit logging.
+ * Prisma Client Extension for automatic audit logging.
+ * Replaces the deprecated $use() middleware with the Client Extensions API.
  * Captures create/update/delete operations on watched models
  * and writes immutable AuditLog records tagged with the actor from AsyncLocalStorage.
  */
@@ -24,47 +24,69 @@ const ACTION_MAP: Record<string, string> = {
 };
 
 /**
- * Registers the audit log middleware on the Prisma client.
+ * Creates a Prisma Client extended with audit logging.
+ * All create/update/delete operations on audited models are automatically logged.
  */
-export function registerAuditMiddleware(prisma: PrismaClient): void {
-  (prisma as unknown as { $use: (middleware: (params: Record<string, unknown>, next: (params: Record<string, unknown>) => Promise<unknown>) => Promise<unknown>) => void }).$use(
-    async (params: Record<string, unknown>, next: (params: Record<string, unknown>) => Promise<unknown>) => {
-      const result = await next(params);
-
-      const model = params['model'] as string | undefined;
-      const action = params['action'] as string | undefined;
-
-      // Only log for audited models and tracked actions
-      if (!model || !AUDITED_MODELS.has(model)) return result;
-      const mappedAction = action ? ACTION_MAP[action] : undefined;
-      if (!mappedAction) return result;
-
-      // Get actor from async context
-      const ctx = asyncContext.getStore();
-      const actorId = ctx?.actorId ?? undefined;
-
-      try {
-        // Extract resource ID
-        const resourceId = extractResourceId(result);
-
-        await (prisma as unknown as { auditLog: { create: (args: { data: Record<string, unknown> }) => Promise<unknown> } }).auditLog.create({
-          data: {
-            actorId,
-            action: mappedAction,
-            resourceType: model,
-            resourceId,
-            before: action === 'update' ? JSON.stringify((params['args'] as Record<string, unknown>)?.['where']) : undefined,
-            after: result ? JSON.stringify(sanitizeForAudit(result)) : undefined,
-          },
-        });
-      } catch (error) {
-        // Never let audit failures break the main operation
-        logger.error('Failed to write audit log', { error, model, action: mappedAction });
-      }
-
-      return result;
+export function withAuditLogging(prisma: PrismaClient) {
+  return prisma.$extends({
+    query: {
+      $allModels: {
+        async create({ model, args, query }) {
+          const result = await query(args);
+          await logAudit(prisma, model, 'create', args, result);
+          return result;
+        },
+        async update({ model, args, query }) {
+          const result = await query(args);
+          await logAudit(prisma, model, 'update', args, result);
+          return result;
+        },
+        async delete({ model, args, query }) {
+          const result = await query(args);
+          await logAudit(prisma, model, 'delete', args, result);
+          return result;
+        },
+        async upsert({ model, args, query }) {
+          const result = await query(args);
+          await logAudit(prisma, model, 'upsert', args, result);
+          return result;
+        },
+      },
     },
-  );
+  });
+}
+
+async function logAudit(
+  prisma: PrismaClient,
+  model: string | undefined,
+  action: string,
+  args: Record<string, unknown>,
+  result: unknown,
+): Promise<void> {
+  if (!model || !AUDITED_MODELS.has(model)) return;
+  const mappedAction = ACTION_MAP[action];
+  if (!mappedAction) return;
+
+  const ctx = asyncContext.getStore();
+  const actorId = ctx?.actorId ?? undefined;
+
+  try {
+    const resourceId = extractResourceId(result);
+
+    await prisma.auditLog.create({
+      data: {
+        actorId: actorId ?? null,
+        action: mappedAction,
+        resourceType: model,
+        resourceId: resourceId ?? 'unknown',
+        before: action === 'update' ? JSON.stringify(args['where']) : undefined,
+        after: result ? JSON.stringify(sanitizeForAudit(result)) : undefined,
+      },
+    });
+  } catch (error) {
+    // Never let audit failures break the main operation
+    logger.error('Failed to write audit log', { error, model, action: mappedAction });
+  }
 }
 
 function extractResourceId(result: unknown): string | undefined {

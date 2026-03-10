@@ -11,7 +11,7 @@ import { createStreamChatClient } from './infrastructure/stream-chat.js';
 import { createStreamVideoClient } from './infrastructure/stream-video.js';
 import { createStripeClient } from './infrastructure/stripe.js';
 import { createQueues } from './infrastructure/bullmq.js';
-import { registerAuditMiddleware } from './modules/audit/middleware.js';
+import { withAuditLogging } from './modules/audit/middleware.js';
 import type { AppConfig } from './config/index.js';
 
 // Repositories
@@ -65,21 +65,23 @@ import { DomainsController } from './modules/domains/controller.js';
 import { CalendarController } from './modules/calendar/controller.js';
 import { AdminController } from './modules/admin/controller.js';
 
+import type { PrismaClient } from '@prisma/client';
+
 /**
  * Creates and returns the entire dependency graph.
  * This is the single location where all wiring happens.
  */
 export function createContainer(config: AppConfig) {
   // Infrastructure
-  const prisma = createPrismaClient(config);
+  const basePrisma = createPrismaClient(config);
+  // Extended client with audit logging — cast to PrismaClient since the extension
+  // only adds query hooks and doesn't change the runtime API surface.
+  const prisma = withAuditLogging(basePrisma) as unknown as PrismaClient;
   const redis = createRedisClient(config);
   const s3Client = new S3StorageClient(config);
   const streamChatClient = createStreamChatClient(config);
   const streamVideoClient = createStreamVideoClient(config);
   const stripe = createStripeClient(config);
-
-  // Register audit middleware on Prisma
-  registerAuditMiddleware(prisma);
 
   // Queues — uses the existing createQueues factory
   const queues = createQueues({ connection: redis });
@@ -138,6 +140,7 @@ export function createContainer(config: AppConfig) {
   return {
     // Infrastructure (exposed for graceful shutdown)
     prisma,
+    basePrisma, // for $disconnect during graceful shutdown
     redis,
 
     // Controllers (exposed for route registration)
