@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  # ─── PostgreSQL ──────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: hclass-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hclass
+      POSTGRES_PASSWORD: hclass_secret
+      POSTGRES_DB: hclass_lms
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U hclass -d hclass_lms']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ─── Redis ──────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: hclass-redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ─── Application ────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hclass-app
+    restart: unless-stopped
+    ports:
+      - '${PORT:-3000}:3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://hclass:hclass_secret@postgres:5432/hclass_lms
+      REDIS_URL: redis://redis:6379
+
+  # ─── Workers ────────────────────────────────────────────
+  workers:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hclass-workers
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://hclass:hclass_secret@postgres:5432/hclass_lms
+      REDIS_URL: redis://redis:6379
+    command: ['node', 'dist/workers.js']
+
+volumes:
+  pgdata:
+  redisdata:
