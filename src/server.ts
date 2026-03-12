@@ -10,6 +10,10 @@ import { createContainer } from "./container.js";
 import { createApp } from "./app.js";
 import { logger } from "./shared/utils/logger.js";
 
+// Boot BullMQ workers in-process (for dev / single-process deployments).
+// On a VPS you can run `npx tsx src/workers.ts` separately and remove this import.
+import "./workers.js";
+
 async function main(): Promise<void> {
   // 1. Validate environment
   const config = loadConfig();
