@@ -1,2 +1,2 @@
-export { loadConfig } from './env.js';
-export type { AppConfig } from './env.js';
+export { loadConfig } from "./env.js";
+export type { AppConfig } from "./env.js";

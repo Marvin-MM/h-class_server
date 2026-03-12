@@ -5,7 +5,12 @@ export interface ApplicationResponse {
   readonly status: string;
   readonly denialReason: string | null;
   readonly createdAt: Date;
-  readonly user: { id: string; firstName: string; lastName: string; email: string };
+  readonly user: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+  };
 }
 
 export interface AppConfigResponse {

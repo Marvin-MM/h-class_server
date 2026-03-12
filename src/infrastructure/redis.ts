@@ -1,6 +1,6 @@
-import { Redis } from 'ioredis';
-import type { AppConfig } from '../config/index.js';
-import { logger } from '../shared/utils/logger.js';
+import { Redis } from "ioredis";
+import type { AppConfig } from "../config/index.js";
+import { logger } from "../shared/utils/logger.js";
 
 /**
  * Creates and configures a Redis client instance.
@@ -12,19 +12,19 @@ export function createRedisClient(config: AppConfig): Redis {
     enableReadyCheck: true,
     retryStrategy(times: number): number | null {
       if (times > 10) {
-        logger.error('Redis: maximum retry attempts exceeded');
+        logger.error("Redis: maximum retry attempts exceeded");
         return null;
       }
       return Math.min(times * 200, 5000);
     },
   });
 
-  client.on('connect', () => {
-    logger.info('Redis client connected');
+  client.on("connect", () => {
+    logger.info("Redis client connected");
   });
 
-  client.on('error', (err: Error) => {
-    logger.error('Redis client error', { error: err.message });
+  client.on("error", (err: Error) => {
+    logger.error("Redis client error", { error: err.message });
   });
 
   return client;

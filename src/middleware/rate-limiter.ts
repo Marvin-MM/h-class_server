@@ -1,6 +1,6 @@
-import rateLimit from 'express-rate-limit';
-import RedisStore from 'rate-limit-redis';
-import type { Redis } from 'ioredis';
+import rateLimit from "express-rate-limit";
+import RedisStore from "rate-limit-redis";
+import type { Redis } from "ioredis";
 
 /**
  * Creates rate limiting middleware instances for different endpoint categories.
@@ -10,7 +10,8 @@ export function createRateLimiters(redisClient: Redis) {
   const createStore = (prefix: string) =>
     new RedisStore({
       // @ts-expect-error ioredis call signature compatibility with rate-limit-redis
-      sendCommand: (...args: string[]) => redisClient.call(args[0]!, ...args.slice(1)),
+      sendCommand: (...args: string[]) =>
+        redisClient.call(args[0]!, ...args.slice(1)),
       prefix,
     });
 
@@ -23,8 +24,14 @@ export function createRateLimiters(redisClient: Redis) {
     max: 5,
     standardHeaders: true,
     legacyHeaders: false,
-    store: createStore('rl:auth:'),
-    message: { success: false, error: { code: 'RATE_LIMIT', message: 'Too many authentication attempts. Please try again later.' } },
+    store: createStore("rl:auth:"),
+    message: {
+      success: false,
+      error: {
+        code: "RATE_LIMIT",
+        message: "Too many authentication attempts. Please try again later.",
+      },
+    },
   });
 
   /**
@@ -36,9 +43,15 @@ export function createRateLimiters(redisClient: Redis) {
     max: 10,
     standardHeaders: true,
     legacyHeaders: false,
-    keyGenerator: (req) => req.user?.userId ?? 'anonymous',
-    store: createStore('rl:upload:'),
-    message: { success: false, error: { code: 'RATE_LIMIT', message: 'Too many upload requests. Please try again later.' } },
+    keyGenerator: (req) => req.user?.userId ?? "anonymous",
+    store: createStore("rl:upload:"),
+    message: {
+      success: false,
+      error: {
+        code: "RATE_LIMIT",
+        message: "Too many upload requests. Please try again later.",
+      },
+    },
   });
 
   /**
@@ -50,9 +63,15 @@ export function createRateLimiters(redisClient: Redis) {
     max: 100,
     standardHeaders: true,
     legacyHeaders: false,
-    keyGenerator: (req) => req.user?.userId ?? 'anonymous',
-    store: createStore('rl:api:'),
-    message: { success: false, error: { code: 'RATE_LIMIT', message: 'Too many requests. Please try again later.' } },
+    keyGenerator: (req) => req.user?.userId ?? "anonymous",
+    store: createStore("rl:api:"),
+    message: {
+      success: false,
+      error: {
+        code: "RATE_LIMIT",
+        message: "Too many requests. Please try again later.",
+      },
+    },
   });
 
   return { authLimiter, uploadLimiter, apiLimiter };

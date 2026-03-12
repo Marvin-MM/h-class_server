@@ -1,6 +1,6 @@
-import { Prisma, PrismaClient } from '@prisma/client';
-import { asyncContext } from '../../shared/utils/async-context.js';
-import { logger } from '../../shared/utils/logger.js';
+import { Prisma, PrismaClient } from "@prisma/client";
+import { asyncContext } from "../../shared/utils/async-context.js";
+import { logger } from "../../shared/utils/logger.js";
 
 /**
  * Prisma Client Extension for automatic audit logging.
@@ -11,16 +11,25 @@ import { logger } from '../../shared/utils/logger.js';
 
 /** Models to track in the audit log. */
 const AUDITED_MODELS = new Set([
-  'User', 'Course', 'Enrollment', 'Session', 'Note',
-  'Assessment', 'Submission', 'Certificate', 'Transaction',
-  'TutorApplication', 'Domain', 'AppConfig',
+  "User",
+  "Course",
+  "Enrollment",
+  "Session",
+  "Note",
+  "Assessment",
+  "Submission",
+  "Certificate",
+  "Transaction",
+  "TutorApplication",
+  "Domain",
+  "AppConfig",
 ]);
 
 const ACTION_MAP: Record<string, string> = {
-  create: 'CREATE',
-  update: 'UPDATE',
-  delete: 'DELETE',
-  upsert: 'UPSERT',
+  create: "CREATE",
+  update: "UPDATE",
+  delete: "DELETE",
+  upsert: "UPSERT",
 };
 
 /**
@@ -33,22 +42,22 @@ export function withAuditLogging(prisma: PrismaClient) {
       $allModels: {
         async create({ model, args, query }) {
           const result = await query(args);
-          await logAudit(prisma, model, 'create', args, result);
+          await logAudit(prisma, model, "create", args, result);
           return result;
         },
         async update({ model, args, query }) {
           const result = await query(args);
-          await logAudit(prisma, model, 'update', args, result);
+          await logAudit(prisma, model, "update", args, result);
           return result;
         },
         async delete({ model, args, query }) {
           const result = await query(args);
-          await logAudit(prisma, model, 'delete', args, result);
+          await logAudit(prisma, model, "delete", args, result);
           return result;
         },
         async upsert({ model, args, query }) {
           const result = await query(args);
-          await logAudit(prisma, model, 'upsert', args, result);
+          await logAudit(prisma, model, "upsert", args, result);
           return result;
         },
       },
@@ -78,32 +87,42 @@ async function logAudit(
         actorId: actorId ?? null,
         action: mappedAction,
         resourceType: model,
-        resourceId: resourceId ?? 'unknown',
-        before: action === 'update' ? JSON.stringify(args['where']) : undefined,
+        resourceId: resourceId ?? "unknown",
+        before: action === "update" ? JSON.stringify(args["where"]) : undefined,
         after: result ? JSON.stringify(sanitizeForAudit(result)) : undefined,
       },
     });
   } catch (error) {
     // Never let audit failures break the main operation
-    logger.error('Failed to write audit log', { error, model, action: mappedAction });
+    logger.error("Failed to write audit log", {
+      error,
+      model,
+      action: mappedAction,
+    });
   }
 }
 
 function extractResourceId(result: unknown): string | undefined {
-  if (result && typeof result === 'object' && 'id' in result) {
-    return String((result as Record<string, unknown>)['id']);
+  if (result && typeof result === "object" && "id" in result) {
+    return String((result as Record<string, unknown>)["id"]);
   }
   return undefined;
 }
 
 /** Removes sensitive fields from audit data. */
 function sanitizeForAudit(data: unknown): unknown {
-  if (!data || typeof data !== 'object') return data;
+  if (!data || typeof data !== "object") return data;
   const sanitized = { ...(data as Record<string, unknown>) };
-  const sensitiveFields = ['passwordHash', 'password', 'refreshToken', 'accessToken', 'token'];
+  const sensitiveFields = [
+    "passwordHash",
+    "password",
+    "refreshToken",
+    "accessToken",
+    "token",
+  ];
   for (const field of sensitiveFields) {
     if (field in sanitized) {
-      sanitized[field] = '[REDACTED]';
+      sanitized[field] = "[REDACTED]";
     }
   }
   return sanitized;

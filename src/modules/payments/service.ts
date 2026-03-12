@@ -1,10 +1,14 @@
-import type { PrismaClient } from '@prisma/client';
-import type { IPaymentGateway } from './gateway.js';
-import type { PaymentsRepository } from './repository.js';
-import type { TransactionResponse, FinancialSummary } from './types.js';
-import { eventBus, AppEvents } from '../../shared/utils/event-bus.js';
-import { ConflictError, NotFoundError, AuthorizationError } from '../../shared/errors/index.js';
-import { logger } from '../../shared/utils/logger.js';
+import type { PrismaClient } from "@prisma/client";
+import type { IPaymentGateway } from "./gateway.js";
+import type { PaymentsRepository } from "./repository.js";
+import type { TransactionResponse, FinancialSummary } from "./types.js";
+import { eventBus, AppEvents } from "../../shared/utils/event-bus.js";
+import {
+  ConflictError,
+  NotFoundError,
+  AuthorizationError,
+} from "../../shared/errors/index.js";
+import { logger } from "../../shared/utils/logger.js";
 
 /**
  * Service handling payment processing, webhook events, and transaction management.
@@ -21,15 +25,18 @@ export class PaymentsService {
    * On payment_intent.succeeded: creates enrollment + transaction in a single Prisma transaction.
    */
   async handleWebhookEvent(rawBody: Buffer, signature: string): Promise<void> {
-    const event = this.paymentGateway.verifyWebhookSignature(rawBody, signature);
+    const event = this.paymentGateway.verifyWebhookSignature(
+      rawBody,
+      signature,
+    );
 
     switch (event.type) {
-      case 'payment_intent.succeeded': {
+      case "payment_intent.succeeded": {
         await this.handlePaymentSuccess(event.data);
         break;
       }
       default:
-        logger.info('Unhandled webhook event type', { type: event.type });
+        logger.info("Unhandled webhook event type", { type: event.type });
     }
   }
 
@@ -40,13 +47,15 @@ export class PaymentsService {
     refreshUrl: string,
     returnUrl: string,
   ): Promise<{ url: string }> {
-    if (userRole !== 'TUTOR') {
-      throw new AuthorizationError('Only tutors can create Connect accounts');
+    if (userRole !== "TUTOR") {
+      throw new AuthorizationError("Only tutors can create Connect accounts");
     }
 
     // Check if tutor already has a Connect account
-    const user = await this.prisma.user.findFirst({ where: { id: userId, deletedAt: null } });
-    if (!user) throw new NotFoundError('User', userId);
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, deletedAt: null },
+    });
+    if (!user) throw new NotFoundError("User", userId);
 
     let accountId = user.stripeConnectId;
     if (!accountId) {
@@ -60,15 +69,23 @@ export class PaymentsService {
       });
     }
 
-    const link = await this.paymentGateway.createOnboardingLink(accountId, refreshUrl, returnUrl);
+    const link = await this.paymentGateway.createOnboardingLink(
+      accountId,
+      refreshUrl,
+      returnUrl,
+    );
 
-    logger.info('Connect onboarding link created', { userId, accountId });
+    logger.info("Connect onboarding link created", { userId, accountId });
     return { url: link.url };
   }
 
   /** Gets transaction history for a user. */
   async getUserTransactions(userId: string, page: number, pageSize: number) {
-    const result = await this.paymentsRepository.findByUserId(userId, page, pageSize);
+    const result = await this.paymentsRepository.findByUserId(
+      userId,
+      page,
+      pageSize,
+    );
     return {
       data: result.data.map(this.toTransactionResponse),
       meta: { page, pageSize, total: result.total },
@@ -76,8 +93,14 @@ export class PaymentsService {
   }
 
   /** Gets financial summary (admin). */
-  async getFinancialSummary(startDate?: Date, endDate?: Date): Promise<FinancialSummary> {
-    const summary = await this.paymentsRepository.getFinancialSummary(startDate, endDate);
+  async getFinancialSummary(
+    startDate?: Date,
+    endDate?: Date,
+  ): Promise<FinancialSummary> {
+    const summary = await this.paymentsRepository.getFinancialSummary(
+      startDate,
+      endDate,
+    );
     return {
       totalGrossRevenue: summary.totalGrossRevenue.toFixed(2),
       totalPlatformFees: summary.totalPlatformFees.toFixed(2),
@@ -89,22 +112,36 @@ export class PaymentsService {
    * Handles a successful payment intent.
    * Creates the enrollment record and transaction ledger entry atomically.
    */
-  private async handlePaymentSuccess(data: Record<string, unknown>): Promise<void> {
-    const paymentIntentId = data['id'] as string;
-    const metadata = data['metadata'] as Record<string, string>;
-    const amountReceived = data['amount_received'] as number;
-    const currency = (data['currency'] as string) ?? 'usd';
+  private async handlePaymentSuccess(
+    data: Record<string, unknown>,
+  ): Promise<void> {
+    const paymentIntentId = data["id"] as string;
+    const metadata = data["metadata"] as Record<string, string>;
+    const amountReceived = data["amount_received"] as number;
+    const currency = (data["currency"] as string) ?? "usd";
 
-    const { courseId, userId, commissionRate, tutorId } = metadata;
+    const {
+      courseId,
+      userId,
+      commissionRate,
+      tutorId,
+      paymentType = "FULL",
+    } = metadata;
     if (!courseId || !userId || !commissionRate) {
-      logger.error('Webhook missing required metadata', { paymentIntentId, metadata });
+      logger.error("Webhook missing required metadata", {
+        paymentIntentId,
+        metadata,
+      });
       return;
     }
 
     // Idempotency check: skip if transaction already exists
-    const existing = await this.paymentsRepository.findByPaymentIntentId(paymentIntentId);
+    const existing =
+      await this.paymentsRepository.findByProviderTransactionId(
+        paymentIntentId,
+      );
     if (existing) {
-      logger.info('Payment already processed, skipping', { paymentIntentId });
+      logger.info("Payment already processed, skipping", { paymentIntentId });
       return;
     }
 
@@ -113,40 +150,88 @@ export class PaymentsService {
     const platformFee = grossAmount * (rate / 100);
     const tutorNetAmount = grossAmount - platformFee;
 
-    // Create enrollment + transaction atomically
-    const result = await this.prisma.$transaction(async (tx) => {
-      return this.paymentsRepository.createEnrollmentAndTransaction(
-        tx,
-        { userId, courseId },
-        {
-          userId,
-          courseId,
-          grossAmount,
-          platformFee,
-          tutorNetAmount,
-          currency,
-          stripePaymentIntentId: paymentIntentId,
-          commissionRate: rate,
-        },
-      );
+    const transactionData = {
+      userId,
+      courseId,
+      grossAmount,
+      platformFee,
+      tutorNetAmount,
+      currency,
+      providerTransactionId: paymentIntentId,
+      commissionRate: rate,
+    };
+
+    let resultEnrollmentId = "";
+    let resultTransactionId = "";
+
+    await this.prisma.$transaction(async (tx) => {
+      if (paymentType === "BALANCE") {
+        // Upgrade existing enrollment to FULL
+        const existingEnrollment = await tx.enrollment.findUnique({
+          where: { userId_courseId: { userId, courseId } },
+        });
+
+        if (!existingEnrollment) {
+          throw new ConflictError(
+            "Balance payment attempted but no enrollment found.",
+          );
+        }
+
+        const updatedEnrollment = await tx.enrollment.update({
+          where: { id: existingEnrollment.id },
+          data: { paymentStatus: "FULL" },
+        });
+
+        const txRecord = await tx.transaction.create({
+          data: { ...transactionData, enrollmentId: existingEnrollment.id },
+        });
+
+        resultEnrollmentId = updatedEnrollment.id;
+        resultTransactionId = txRecord.id;
+      } else {
+        // Create new enrollment (FULL or PARTIAL)
+        const result =
+          await this.paymentsRepository.createEnrollmentAndTransaction(
+            tx,
+            {
+              userId,
+              courseId,
+              paymentStatus: paymentType as "PARTIAL" | "FULL",
+            },
+            transactionData,
+          );
+        resultEnrollmentId = result.enrollmentId;
+        resultTransactionId = result.transactionId;
+      }
     });
 
     // Get course name for the event
-    const course = await this.prisma.course.findUnique({ where: { id: courseId }, select: { title: true } });
-
-    // Emit enrollment created event
-    eventBus.emit(AppEvents.ENROLLMENT_CREATED, {
-      enrollmentId: result.enrollmentId,
-      userId,
-      courseId,
-      courseName: course?.title ?? 'Unknown Course',
+    const course = await this.prisma.course.findUnique({
+      where: { id: courseId },
+      select: { title: true },
     });
 
-    logger.info('Payment processed and enrollment created', {
-      paymentIntentId,
-      enrollmentId: result.enrollmentId,
-      transactionId: result.transactionId,
-    });
+    // Emit event
+    if (paymentType === "BALANCE") {
+      logger.info("Balance payment processed and enrollment upgraded to FULL", {
+        paymentIntentId,
+        enrollmentId: resultEnrollmentId,
+        transactionId: resultTransactionId,
+      });
+    } else {
+      eventBus.emit(AppEvents.ENROLLMENT_CREATED, {
+        enrollmentId: resultEnrollmentId,
+        userId,
+        courseId,
+        courseName: course?.title ?? "Unknown Course",
+      });
+      logger.info("Payment processed and enrollment created", {
+        paymentIntentId,
+        enrollmentId: resultEnrollmentId,
+        transactionId: resultTransactionId,
+        paymentType,
+      });
+    }
   }
 
   private toTransactionResponse(tx: {
@@ -158,7 +243,7 @@ export class PaymentsService {
     platformFee: unknown;
     tutorNetAmount: unknown;
     currency: string;
-    stripePaymentIntentId: string;
+    providerTransactionId: string;
     commissionRate: unknown;
     createdAt: Date;
   }): TransactionResponse {
@@ -171,7 +256,7 @@ export class PaymentsService {
       platformFee: String(tx.platformFee),
       tutorNetAmount: String(tx.tutorNetAmount),
       currency: tx.currency,
-      stripePaymentIntentId: tx.stripePaymentIntentId,
+      providerTransactionId: tx.providerTransactionId,
       commissionRate: String(tx.commissionRate),
       createdAt: tx.createdAt,
     };

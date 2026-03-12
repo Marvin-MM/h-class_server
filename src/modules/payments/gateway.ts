@@ -69,7 +69,9 @@ export interface WebhookEvent {
  */
 export interface IPaymentGateway {
   /** Creates a payment intent. */
-  createPaymentIntent(options: CreatePaymentIntentOptions): Promise<PaymentIntentResult>;
+  createPaymentIntent(
+    options: CreatePaymentIntentOptions,
+  ): Promise<PaymentIntentResult>;
 
   /** Confirms a payment (typically automatic). */
   confirmPayment(paymentIntentId: string): Promise<PaymentIntentResult>;
@@ -84,7 +86,11 @@ export interface IPaymentGateway {
   createConnectAccount(email: string): Promise<ConnectAccountResult>;
 
   /** Generates a Stripe Connect onboarding link. */
-  createOnboardingLink(accountId: string, refreshUrl: string, returnUrl: string): Promise<OnboardingLinkResult>;
+  createOnboardingLink(
+    accountId: string,
+    refreshUrl: string,
+    returnUrl: string,
+  ): Promise<OnboardingLinkResult>;
 
   /** Transfers funds to a connected account. */
   transferFunds(options: TransferOptions): Promise<TransferResult>;

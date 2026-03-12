@@ -1,4 +1,4 @@
-import type { PrismaClient, Transaction, Prisma } from '@prisma/client';
+import type { PrismaClient, Transaction, Prisma } from "@prisma/client";
 
 /**
  * Repository for payment/transaction database operations.
@@ -16,7 +16,7 @@ export class PaymentsRepository {
     platformFee: number;
     tutorNetAmount: number;
     currency: string;
-    stripePaymentIntentId: string;
+    providerTransactionId: string;
     commissionRate: number;
   }): Promise<Transaction> {
     return this.prisma.transaction.create({ data });
@@ -25,7 +25,11 @@ export class PaymentsRepository {
   /** Creates an enrollment and transaction atomically within a Prisma transaction. */
   async createEnrollmentAndTransaction(
     tx: Prisma.TransactionClient,
-    enrollment: { userId: string; courseId: string },
+    enrollment: {
+      userId: string;
+      courseId: string;
+      paymentStatus?: "PARTIAL" | "FULL";
+    },
     transaction: {
       enrollmentId?: string;
       userId: string;
@@ -34,12 +38,16 @@ export class PaymentsRepository {
       platformFee: number;
       tutorNetAmount: number;
       currency: string;
-      stripePaymentIntentId: string;
+      providerTransactionId: string;
       commissionRate: number;
     },
   ): Promise<{ enrollmentId: string; transactionId: string }> {
     const enrollmentRecord = await tx.enrollment.create({
-      data: { userId: enrollment.userId, courseId: enrollment.courseId },
+      data: {
+        userId: enrollment.userId,
+        courseId: enrollment.courseId,
+        paymentStatus: enrollment.paymentStatus ?? "FULL",
+      },
     });
 
     const transactionRecord = await tx.transaction.create({
@@ -49,18 +57,25 @@ export class PaymentsRepository {
       },
     });
 
-    return { enrollmentId: enrollmentRecord.id, transactionId: transactionRecord.id };
+    return {
+      enrollmentId: enrollmentRecord.id,
+      transactionId: transactionRecord.id,
+    };
   }
 
   /** Lists transactions for a specific user with pagination. */
-  async findByUserId(userId: string, page: number, pageSize: number): Promise<{ data: Transaction[]; total: number }> {
+  async findByUserId(
+    userId: string,
+    page: number,
+    pageSize: number,
+  ): Promise<{ data: Transaction[]; total: number }> {
     const where = { userId };
     const [data, total] = await this.prisma.$transaction([
       this.prisma.transaction.findMany({
         where,
         skip: (page - 1) * pageSize,
         take: pageSize,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
       }),
       this.prisma.transaction.count({ where }),
     ]);
@@ -68,14 +83,18 @@ export class PaymentsRepository {
   }
 
   /** Lists transactions for a course (tutor view). */
-  async findByCourseId(courseId: string, page: number, pageSize: number): Promise<{ data: Transaction[]; total: number }> {
+  async findByCourseId(
+    courseId: string,
+    page: number,
+    pageSize: number,
+  ): Promise<{ data: Transaction[]; total: number }> {
     const where = { courseId };
     const [data, total] = await this.prisma.$transaction([
       this.prisma.transaction.findMany({
         where,
         skip: (page - 1) * pageSize,
         take: pageSize,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
       }),
       this.prisma.transaction.count({ where }),
     ]);
@@ -83,7 +102,10 @@ export class PaymentsRepository {
   }
 
   /** Gets financial summary with optional date range. */
-  async getFinancialSummary(startDate?: Date, endDate?: Date): Promise<{
+  async getFinancialSummary(
+    startDate?: Date,
+    endDate?: Date,
+  ): Promise<{
     totalGrossRevenue: number;
     totalPlatformFees: number;
     totalTutorPayouts: number;
@@ -112,10 +134,12 @@ export class PaymentsRepository {
     };
   }
 
-  /** Finds a transaction by Stripe payment intent ID. */
-  async findByPaymentIntentId(paymentIntentId: string): Promise<Transaction | null> {
+  /** Finds a transaction by provider transaction ID. */
+  async findByProviderTransactionId(
+    providerTransactionId: string,
+  ): Promise<Transaction | null> {
     return this.prisma.transaction.findUnique({
-      where: { stripePaymentIntentId: paymentIntentId },
+      where: { providerTransactionId },
     });
   }
 }

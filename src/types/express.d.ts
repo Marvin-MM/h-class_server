@@ -1,6 +1,6 @@
-import 'express';
+import "express";
 
-declare module 'express' {
+declare module "express" {
   interface Request {
     user?: {
       userId: string;

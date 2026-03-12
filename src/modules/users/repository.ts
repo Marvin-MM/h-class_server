@@ -1,4 +1,4 @@
-import type { PrismaClient, User } from '@prisma/client';
+import type { PrismaClient, User } from "@prisma/client";
 
 /**
  * Repository for user profile database operations.
@@ -14,7 +14,10 @@ export class UsersRepository {
   }
 
   /** Updates a user's profile fields. Role changes are not allowed through this method. */
-  async updateProfile(id: string, data: { firstName?: string; lastName?: string; avatarUrl?: string | null }): Promise<User> {
+  async updateProfile(
+    id: string,
+    data: { firstName?: string; lastName?: string; avatarUrl?: string | null },
+  ): Promise<User> {
     return this.prisma.user.update({
       where: { id },
       data,

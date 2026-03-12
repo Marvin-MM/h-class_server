@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from "zod";
 
 /** Schema for requesting Connect onboarding. */
 export const connectOnboardingSchema = z.object({

@@ -1,5 +1,5 @@
-import Stripe from 'stripe';
-import type { AppConfig } from '../config/index.js';
+import Stripe from "stripe";
+import type { AppConfig } from "../config/index.js";
 
 /**
  * Creates and configures a Stripe API client instance.

@@ -1,9 +1,15 @@
-import { z } from 'zod';
+import { z } from "zod";
 
-export const createChannelSchema = z.object({
-  type: z.enum(['STUDENT_TUTOR', 'COURSE_SUPPORT', 'SUPPORT']),
+export const createConversationSchema = z.object({
+  type: z.enum(["DIRECT", "COURSE", "SUPPORT"]),
   courseId: z.string().uuid().optional(),
-  targetUserId: z.string().uuid().optional(), // For STUDENT_TUTOR channels
+  targetUserId: z.string().uuid().optional(), // For DIRECT channels
 });
 
-export type CreateChannelDto = z.infer<typeof createChannelSchema>;
+export type CreateConversationDto = z.infer<typeof createConversationSchema>;
+
+export const sendMessageSchema = z.object({
+  content: z.string().min(1, "Message cannot be empty").max(2000, "Message too long"),
+});
+
+export type SendMessageDto = z.infer<typeof sendMessageSchema>;

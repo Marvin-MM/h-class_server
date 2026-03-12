@@ -1,4 +1,9 @@
-import type { PrismaClient, User, TutorApplication, ApplicationStatus } from '@prisma/client';
+import type {
+  PrismaClient,
+  User,
+  TutorApplication,
+  ApplicationStatus,
+} from "@prisma/client";
 
 /**
  * Repository for authentication-related database operations.
@@ -8,8 +13,7 @@ export class AuthRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
   /**
-   * Finds a user by email, including soft-deleted users.
-   * Used during login to validate credentials.
+   * Finds a user by email, excluding soft-deleted users.
    */
   async findByEmail(email: string): Promise<User | null> {
     return this.prisma.user.findFirst({
@@ -46,11 +50,33 @@ export class AuthRepository {
   }
 
   /**
+   * Marks a user's email as verified.
+   */
+  async markEmailVerified(userId: string): Promise<User> {
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { emailVerified: true },
+    });
+  }
+
+  /**
+   * Updates a user's password.
+   */
+  async updatePassword(userId: string, hashedPassword: string): Promise<void> {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { password: hashedPassword },
+    });
+  }
+
+  /**
    * Finds a pending tutor application for a given user.
    */
-  async findPendingApplication(userId: string): Promise<TutorApplication | null> {
+  async findPendingApplication(
+    userId: string,
+  ): Promise<TutorApplication | null> {
     return this.prisma.tutorApplication.findFirst({
-      where: { userId, status: 'PENDING' as ApplicationStatus },
+      where: { userId, status: "PENDING" as ApplicationStatus },
     });
   }
 

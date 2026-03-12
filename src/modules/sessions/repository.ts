@@ -1,4 +1,4 @@
-import type { PrismaClient, Session, SessionStatus } from '@prisma/client';
+import type { PrismaClient, Session, SessionStatus } from "@prisma/client";
 
 export class SessionsRepository {
   constructor(private readonly prisma: PrismaClient) {}
@@ -20,7 +20,7 @@ export class SessionsRepository {
   async findByCourseId(courseId: string): Promise<Session[]> {
     return this.prisma.session.findMany({
       where: { courseId },
-      orderBy: { scheduledAt: 'asc' },
+      orderBy: { scheduledAt: "asc" },
     });
   }
 
@@ -42,7 +42,7 @@ export class SessionsRepository {
   async findOverdueSessions(): Promise<Session[]> {
     return this.prisma.session.findMany({
       where: {
-        status: 'SCHEDULED',
+        status: "SCHEDULED",
         scheduledAt: { lt: new Date() },
       },
     });

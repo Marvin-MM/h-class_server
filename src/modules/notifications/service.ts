@@ -1,9 +1,9 @@
-import type { Queue } from 'bullmq';
-import type { NotificationsRepository } from './repository.js';
-import type { NotificationResponse } from './types.js';
-import type { RegisterPushTokenDto } from './dto.js';
-import { NotFoundError } from '../../shared/errors/index.js';
-import { logger } from '../../shared/utils/logger.js';
+import type { Queue } from "bullmq";
+import type { NotificationsRepository } from "./repository.js";
+import type { NotificationResponse } from "./types.js";
+import type { RegisterPushTokenDto } from "./dto.js";
+import { NotFoundError, AuthorizationError } from "../../shared/errors/index.js";
+import { logger } from "../../shared/utils/logger.js";
 
 /**
  * Service handling in-app notifications and push notification dispatching.
@@ -20,14 +20,22 @@ export class NotificationsService {
     await this.notificationsRepository.create({ userId, title, message });
 
     // Enqueue push notification via BullMQ
-    await this.pushNotificationQueue.add('send-push', { userId, title, message });
+    await this.pushNotificationQueue.add("send-push", {
+      userId,
+      title,
+      message,
+    });
 
-    logger.info('Notification sent', { userId, title });
+    logger.info("Notification sent", { userId, title });
   }
 
   /** Gets paginated notifications for a user. */
   async getUserNotifications(userId: string, page: number, pageSize: number) {
-    const result = await this.notificationsRepository.findByUserId(userId, page, pageSize);
+    const result = await this.notificationsRepository.findByUserId(
+      userId,
+      page,
+      pageSize,
+    );
     return {
       data: result.data.map(this.toResponse),
       meta: { page, pageSize, total: result.total },
@@ -35,18 +43,50 @@ export class NotificationsService {
   }
 
   /** Marks a notification as read. */
-  async markAsRead(notificationId: string, userId: string): Promise<NotificationResponse> {
-    const notification = await this.notificationsRepository.markAsRead(notificationId, userId);
-    return this.toResponse(notification);
+  async markAsRead(
+    notificationId: string,
+    userId: string,
+  ): Promise<NotificationResponse> {
+    const notification = await this.notificationsRepository.findById(notificationId);
+    if (!notification) {
+      throw new NotFoundError("Notification", notificationId);
+    }
+    if (notification.userId !== userId) {
+      throw new AuthorizationError("You can only access your own notifications");
+    }
+
+    const updated = await this.notificationsRepository.markAsRead(notificationId);
+    return this.toResponse(updated);
   }
 
   /** Registers an FCM push token for the user. */
-  async registerPushToken(userId: string, dto: RegisterPushTokenDto): Promise<void> {
-    await this.notificationsRepository.registerPushToken(userId, dto.token, dto.platform);
-    logger.info('Push token registered', { userId, platform: dto.platform });
+  async registerPushToken(
+    userId: string,
+    dto: RegisterPushTokenDto,
+  ): Promise<void> {
+    await this.notificationsRepository.registerPushToken(
+      userId,
+      dto.token,
+      dto.platform,
+    );
+    logger.info("Push token registered", { userId, platform: dto.platform });
   }
 
-  private toResponse(n: { id: string; userId: string; title: string; message: string; read: boolean; createdAt: Date }): NotificationResponse {
-    return { id: n.id, userId: n.userId, title: n.title, message: n.message, read: n.read, createdAt: n.createdAt };
+  private toResponse(n: {
+    id: string;
+    userId: string;
+    title: string;
+    message: string;
+    read: boolean;
+    createdAt: Date;
+  }): NotificationResponse {
+    return {
+      id: n.id,
+      userId: n.userId,
+      title: n.title,
+      message: n.message,
+      read: n.read,
+      createdAt: n.createdAt,
+    };
   }
 }

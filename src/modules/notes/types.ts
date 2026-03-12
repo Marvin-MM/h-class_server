@@ -5,6 +5,7 @@ export interface NoteResponse {
   readonly tutorId: string;
   readonly title: string;
   readonly s3Key: string;
+  readonly downloadUrl?: string;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 }

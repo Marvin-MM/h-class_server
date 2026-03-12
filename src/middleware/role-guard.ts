@@ -1,5 +1,5 @@
-import type { Request, Response, NextFunction } from 'express';
-import { AuthorizationError } from '../shared/errors/index.js';
+import type { Request, Response, NextFunction } from "express";
+import { AuthorizationError } from "../shared/errors/index.js";
 
 /**
  * Creates a middleware that restricts access to users with specific roles.
@@ -10,12 +10,16 @@ import { AuthorizationError } from '../shared/errors/index.js';
 export function roleGuard(...roles: string[]) {
   return (req: Request, _res: Response, next: NextFunction): void => {
     if (!req.user) {
-      next(new AuthorizationError('Authentication required'));
+      next(new AuthorizationError("Authentication required"));
       return;
     }
 
     if (!roles.includes(req.user.role)) {
-      next(new AuthorizationError(`This action requires one of the following roles: ${roles.join(', ')}`));
+      next(
+        new AuthorizationError(
+          `This action requires one of the following roles: ${roles.join(", ")}`,
+        ),
+      );
       return;
     }
 

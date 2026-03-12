@@ -1,15 +1,19 @@
-import type { PrismaClient } from '@prisma/client';
-import type { CoursesRepository } from './repository.js';
-import type { CreateCourseDto, UpdateCourseDto, ListCoursesDto } from './dto.js';
-import type { CourseResponse, EnrollmentInitResult } from './types.js';
-import type { IPaymentGateway } from '../payments/gateway.js';
+import type { PrismaClient } from "@prisma/client";
+import type { CoursesRepository } from "./repository.js";
+import type {
+  CreateCourseDto,
+  UpdateCourseDto,
+  ListCoursesDto,
+} from "./dto.js";
+import type { CourseResponse, EnrollmentInitResult } from "./types.js";
+import type { IPaymentGateway } from "../payments/gateway.js";
 import {
   NotFoundError,
   ConflictError,
   AuthorizationError,
   ValidationError,
-} from '../../shared/errors/index.js';
-import { logger } from '../../shared/utils/logger.js';
+} from "../../shared/errors/index.js";
+import { logger } from "../../shared/utils/logger.js";
 
 /**
  * Service handling all course-related business logic.
@@ -25,10 +29,13 @@ export class CoursesService {
    * Creates a new course in DRAFT status.
    * Only tutors can create courses. Commission rate is snapshotted at creation.
    */
-  async createCourse(tutorId: string, dto: CreateCourseDto): Promise<CourseResponse> {
+  async createCourse(
+    tutorId: string,
+    dto: CreateCourseDto,
+  ): Promise<CourseResponse> {
     // Get current platform commission from app_config
     const configRow = await this.prisma.appConfig.findUnique({
-      where: { key: 'platform_commission_rate' },
+      where: { key: "platform_commission_rate" },
     });
     const commissionRate = configRow ? parseFloat(configRow.value) : 10; // Default 10%
 
@@ -41,7 +48,7 @@ export class CoursesService {
       commissionRate,
     });
 
-    logger.info('Course created', { courseId: course.id, tutorId });
+    logger.info("Course created", { courseId: course.id, tutorId });
     return this.toResponse(course);
   }
 
@@ -49,7 +56,7 @@ export class CoursesService {
   async getCourse(courseId: string): Promise<CourseResponse> {
     const course = await this.coursesRepository.findByIdWithTutor(courseId);
     if (!course) {
-      throw new NotFoundError('Course', courseId);
+      throw new NotFoundError("Course", courseId);
     }
     return this.toResponse(course);
   }
@@ -70,51 +77,74 @@ export class CoursesService {
   }
 
   /** Updates a course. Only the owning tutor can update. */
-  async updateCourse(courseId: string, tutorId: string, dto: UpdateCourseDto): Promise<CourseResponse> {
+  async updateCourse(
+    courseId: string,
+    tutorId: string,
+    dto: UpdateCourseDto,
+  ): Promise<CourseResponse> {
     const course = await this.coursesRepository.findById(courseId);
     if (!course) {
-      throw new NotFoundError('Course', courseId);
+      throw new NotFoundError("Course", courseId);
     }
     if (course.tutorId !== tutorId) {
-      throw new AuthorizationError('You can only update your own courses');
+      throw new AuthorizationError("You can only update your own courses");
     }
 
-    const updated = await this.coursesRepository.update(courseId, dto as unknown as Parameters<typeof this.coursesRepository.update>[1]);
-    logger.info('Course updated', { courseId, tutorId });
+    const updated = await this.coursesRepository.update(
+      courseId,
+      dto as unknown as Parameters<typeof this.coursesRepository.update>[1],
+    );
+    logger.info("Course updated", { courseId, tutorId });
     return this.toResponse(updated);
   }
 
   /** Publishes a DRAFT course so it becomes visible. */
-  async publishCourse(courseId: string, tutorId: string): Promise<CourseResponse> {
+  async publishCourse(
+    courseId: string,
+    tutorId: string,
+  ): Promise<CourseResponse> {
     const course = await this.coursesRepository.findById(courseId);
-    if (!course) throw new NotFoundError('Course', courseId);
-    if (course.tutorId !== tutorId) throw new AuthorizationError('You can only publish your own courses');
-    if (course.status !== 'DRAFT') throw new ConflictError('Only DRAFT courses can be published');
+    if (!course) throw new NotFoundError("Course", courseId);
+    if (course.tutorId !== tutorId)
+      throw new AuthorizationError("You can only publish your own courses");
+    if (course.status !== "DRAFT")
+      throw new ConflictError("Only DRAFT courses can be published");
 
-    const updated = await this.coursesRepository.update(courseId, { status: 'PUBLISHED' });
-    logger.info('Course published', { courseId });
+    const updated = await this.coursesRepository.update(courseId, {
+      status: "PUBLISHED",
+    });
+    logger.info("Course published", { courseId });
     return this.toResponse(updated);
   }
 
   /** Marks a course as COMPLETED. Triggers final assessment flow. */
-  async completeCourse(courseId: string, tutorId: string): Promise<CourseResponse> {
+  async completeCourse(
+    courseId: string,
+    tutorId: string,
+  ): Promise<CourseResponse> {
     const course = await this.coursesRepository.findById(courseId);
-    if (!course) throw new NotFoundError('Course', courseId);
-    if (course.tutorId !== tutorId) throw new AuthorizationError('You can only complete your own courses');
-    if (course.status !== 'IN_PROGRESS') throw new ConflictError('Only IN_PROGRESS courses can be completed');
+    if (!course) throw new NotFoundError("Course", courseId);
+    if (course.tutorId !== tutorId)
+      throw new AuthorizationError("You can only complete your own courses");
+    if (course.status !== "IN_PROGRESS")
+      throw new ConflictError("Only IN_PROGRESS courses can be completed");
 
-    const updated = await this.coursesRepository.update(courseId, { status: 'COMPLETED' });
-    logger.info('Course completed', { courseId });
+    const updated = await this.coursesRepository.update(courseId, {
+      status: "COMPLETED",
+    });
+    logger.info("Course completed", { courseId });
     return this.toResponse(updated);
   }
 
   /** Archives a course. Admin only. */
   async archiveCourse(courseId: string): Promise<CourseResponse> {
     const course = await this.coursesRepository.findById(courseId);
-    if (!course) throw new NotFoundError('Course', courseId);
+    if (!course) throw new NotFoundError("Course", courseId);
 
-    const updated = await this.coursesRepository.update(courseId, { status: 'ARCHIVED' });
-    logger.info('Course archived', { courseId });
+    const updated = await this.coursesRepository.update(courseId, {
+      status: "ARCHIVED",
+    });
+    logger.info("Course archived", { courseId });
     return this.toResponse(updated);
   }
 
@@ -123,34 +153,111 @@ export class CoursesService {
    * Uses a row-level lock in a transaction to prevent race conditions.
    * Returns the Stripe client secret so the frontend can complete payment.
    */
-  async initiateEnrollment(courseId: string, userId: string): Promise<EnrollmentInitResult> {
+  async initiateEnrollment(
+    courseId: string,
+    userId: string,
+    paymentType: "FULL" | "PARTIAL" = "FULL",
+  ): Promise<EnrollmentInitResult> {
     return this.prisma.$transaction(async (tx) => {
       // Lock the course row
-      const course = await this.coursesRepository.findByIdForUpdate(courseId, tx);
-      if (!course) throw new NotFoundError('Course', courseId);
-      if (course.status !== 'PUBLISHED') throw new ConflictError('Course is not available for enrollment');
+      const course = await this.coursesRepository.findByIdForUpdate(
+        courseId,
+        tx,
+      );
+      if (!course) throw new NotFoundError("Course", courseId);
+      if (course.status !== "PUBLISHED")
+        throw new ConflictError("Course is not available for enrollment");
 
       // Check if already enrolled
-      const isEnrolled = await this.coursesRepository.isEnrolled(userId, courseId);
-      if (isEnrolled) throw new ConflictError('You are already enrolled in this course');
+      const isEnrolled = await this.coursesRepository.isEnrolled(
+        userId,
+        courseId,
+      );
+      if (isEnrolled)
+        throw new ConflictError("You are already enrolled in this course");
 
       // Create Stripe PaymentIntent with idempotency key
-      const idempotencyKey = `enroll:${userId}:${courseId}`;
-      const priceInCents = Math.round(Number(course.price) * 100);
+      const idempotencyKey = `enroll:${userId}:${courseId}:${paymentType}`;
+      let amountToPay = Number(course.price);
+      if (paymentType === "PARTIAL") {
+        amountToPay = amountToPay * 0.6; // 60% partial payment
+      }
+      const priceInCents = Math.round(amountToPay * 100);
 
       const paymentIntent = await this.paymentGateway.createPaymentIntent({
         amount: priceInCents,
-        currency: 'usd',
+        currency: "usd",
         metadata: {
           courseId,
           userId,
           commissionRate: course.commissionRate.toString(),
           tutorId: course.tutorId,
+          paymentType,
         },
         idempotencyKey,
       });
 
-      logger.info('Enrollment payment initiated', { courseId, userId, paymentIntentId: paymentIntent.id });
+      logger.info("Enrollment payment initiated", {
+        courseId,
+        userId,
+        paymentIntentId: paymentIntent.id,
+        paymentType,
+      });
+
+      return {
+        clientSecret: paymentIntent.clientSecret,
+        paymentIntentId: paymentIntent.id,
+      };
+    });
+  }
+
+  /**
+   * Initiates payment for the remaining balance of a course (the remaining 40%).
+   */
+  async initiateBalancePayment(
+    courseId: string,
+    userId: string,
+  ): Promise<EnrollmentInitResult> {
+    return this.prisma.$transaction(async (tx) => {
+      const course = await this.coursesRepository.findByIdForUpdate(
+        courseId,
+        tx,
+      );
+      if (!course) throw new NotFoundError("Course", courseId);
+
+      const enrollment = await this.prisma.enrollment.findUnique({
+        where: { userId_courseId: { userId, courseId } },
+      });
+
+      if (!enrollment)
+        throw new ConflictError("You are not enrolled in this course");
+      if (enrollment.paymentStatus === "FULL") {
+        throw new ConflictError("Your course balance is already fully paid");
+      }
+
+      // Remaining 40% balance
+      const amountToPay = Number(course.price) * 0.4;
+      const priceInCents = Math.round(amountToPay * 100);
+      const idempotencyKey = `balance:${userId}:${courseId}`;
+
+      const paymentIntent = await this.paymentGateway.createPaymentIntent({
+        amount: priceInCents,
+        currency: "usd",
+        metadata: {
+          courseId,
+          userId,
+          commissionRate: course.commissionRate.toString(),
+          tutorId: course.tutorId,
+          paymentType: "BALANCE", // Signals the webhook to upgrade PaymentStatus
+        },
+        idempotencyKey,
+      });
+
+      logger.info("Balance payment initiated", {
+        courseId,
+        userId,
+        paymentIntentId: paymentIntent.id,
+      });
 
       return {
         clientSecret: paymentIntent.clientSecret,
@@ -160,17 +267,28 @@ export class CoursesService {
   }
 
   /** Gets the roster of enrolled students for a tutor's course. */
-  async getCourseStudents(courseId: string, tutorId: string, page: number, pageSize: number) {
+  async getCourseStudents(
+    courseId: string,
+    tutorId: string,
+    page: number,
+    pageSize: number,
+  ) {
     const course = await this.coursesRepository.findById(courseId);
-    if (!course) throw new NotFoundError('Course', courseId);
-    if (course.tutorId !== tutorId) throw new AuthorizationError('You can only view students for your own courses');
+    if (!course) throw new NotFoundError("Course", courseId);
+    if (course.tutorId !== tutorId)
+      throw new AuthorizationError(
+        "You can only view students for your own courses",
+      );
 
     return this.coursesRepository.findEnrollments(courseId, { page, pageSize });
   }
 
   /** Gets a student's own enrollments. */
   async getMyEnrollments(userId: string, page: number, pageSize: number) {
-    return this.coursesRepository.findStudentEnrollments(userId, { page, pageSize });
+    return this.coursesRepository.findStudentEnrollments(userId, {
+      page,
+      pageSize,
+    });
   }
 
   private toResponse(course: {

@@ -23,6 +23,7 @@ export interface AuthUserResponse {
   readonly firstName: string;
   readonly lastName: string;
   readonly role: string;
+  readonly emailVerified: boolean;
   readonly avatarUrl: string | null;
   readonly createdAt: Date;
 }

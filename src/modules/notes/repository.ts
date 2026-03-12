@@ -1,4 +1,4 @@
-import type { PrismaClient, Note } from '@prisma/client';
+import type { PrismaClient, Note } from "@prisma/client";
 
 /**
  * Notes repository. Enrollment access check is enforced in queries.
@@ -34,7 +34,7 @@ export class NotesRepository {
 
     return this.prisma.note.findMany({
       where: { courseId },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
     });
   }
 

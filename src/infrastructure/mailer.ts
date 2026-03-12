@@ -1,7 +1,7 @@
-import nodemailer from 'nodemailer';
-import type { Transporter } from 'nodemailer';
-import type { AppConfig } from '../config/index.js';
-import { logger } from '../shared/utils/logger.js';
+import nodemailer from "nodemailer";
+import type { Transporter } from "nodemailer";
+import type { AppConfig } from "../config/index.js";
+import { logger } from "../shared/utils/logger.js";
 
 /** Email options for sending a message. */
 export interface EmailOptions {
@@ -26,7 +26,10 @@ export function createMailTransport(config: AppConfig): Transporter {
     },
   });
 
-  logger.info('Mail transport created', { host: config.SMTP_HOST, port: config.SMTP_PORT });
+  logger.info("Mail transport created", {
+    host: config.SMTP_HOST,
+    port: config.SMTP_PORT,
+  });
   return transporter;
 }
 
@@ -49,5 +52,5 @@ export async function sendEmail(
     text: options.text,
   });
 
-  logger.info('Email sent', { to: options.to, subject: options.subject });
+  logger.info("Email sent", { to: options.to, subject: options.subject });
 }

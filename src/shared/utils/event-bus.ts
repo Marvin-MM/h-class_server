@@ -1,4 +1,4 @@
-import { EventEmitter } from 'events';
+import { EventEmitter } from "events";
 
 /**
  * Application event names. All event names are defined as constants
@@ -6,29 +6,29 @@ import { EventEmitter } from 'events';
  */
 export const AppEvents = {
   /** Fired after a new user is registered successfully. */
-  USER_REGISTERED: 'user.registered',
+  USER_REGISTERED: "user.registered",
   /** Fired after successful enrollment creation (payment confirmed). */
-  ENROLLMENT_CREATED: 'enrollment.created',
+  ENROLLMENT_CREATED: "enrollment.created",
   /** Fired when a session is scheduled. */
-  SESSION_SCHEDULED: 'session.scheduled',
+  SESSION_SCHEDULED: "session.scheduled",
   /** Fired when a session transitions to LIVE. */
-  SESSION_STARTED: 'session.started',
+  SESSION_STARTED: "session.started",
   /** Fired when a session transitions to ENDED. */
-  SESSION_ENDED: 'session.ended',
+  SESSION_ENDED: "session.ended",
   /** Fired when a student becomes eligible for a certificate. */
-  CERTIFICATE_ELIGIBLE: 'certificate.eligible',
+  CERTIFICATE_ELIGIBLE: "certificate.eligible",
   /** Fired when a certificate is issued. */
-  CERTIFICATE_ISSUED: 'certificate.issued',
+  CERTIFICATE_ISSUED: "certificate.issued",
   /** Fired when a tutor application is approved. */
-  TUTOR_APPLICATION_APPROVED: 'tutor_application.approved',
+  TUTOR_APPLICATION_APPROVED: "tutor_application.approved",
   /** Fired when a tutor application is denied. */
-  TUTOR_APPLICATION_DENIED: 'tutor_application.denied',
+  TUTOR_APPLICATION_DENIED: "tutor_application.denied",
   /** Fired when domain provisioning fails. */
-  DOMAIN_PROVISIONING_FAILED: 'domain.provisioning_failed',
+  DOMAIN_PROVISIONING_FAILED: "domain.provisioning_failed",
   /** Fired when a note is created. */
-  NOTE_CREATED: 'note.created',
+  NOTE_CREATED: "note.created",
   /** Fired when an assessment is graded. */
-  ASSESSMENT_GRADED: 'assessment.graded',
+  ASSESSMENT_GRADED: "assessment.graded",
 } as const;
 
 /** Union type of all event name values. */
@@ -135,17 +135,26 @@ class TypedEventBus {
   }
 
   /** Subscribe to a typed event. */
-  on<K extends keyof EventMap>(event: K, listener: (payload: EventMap[K]) => void): void {
+  on<K extends keyof EventMap>(
+    event: K,
+    listener: (payload: EventMap[K]) => void,
+  ): void {
     this.emitter.on(event, listener as (...args: unknown[]) => void);
   }
 
   /** Subscribe to a typed event for a single invocation. */
-  once<K extends keyof EventMap>(event: K, listener: (payload: EventMap[K]) => void): void {
+  once<K extends keyof EventMap>(
+    event: K,
+    listener: (payload: EventMap[K]) => void,
+  ): void {
     this.emitter.once(event, listener as (...args: unknown[]) => void);
   }
 
   /** Unsubscribe from a typed event. */
-  off<K extends keyof EventMap>(event: K, listener: (payload: EventMap[K]) => void): void {
+  off<K extends keyof EventMap>(
+    event: K,
+    listener: (payload: EventMap[K]) => void,
+  ): void {
     this.emitter.off(event, listener as (...args: unknown[]) => void);
   }
 }

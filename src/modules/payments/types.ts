@@ -10,7 +10,7 @@ export interface TransactionResponse {
   readonly platformFee: string;
   readonly tutorNetAmount: string;
   readonly currency: string;
-  readonly stripePaymentIntentId: string;
+  readonly providerTransactionId: string;
   readonly commissionRate: string;
   readonly createdAt: Date;
 }

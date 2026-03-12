@@ -1,6 +1,10 @@
-import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import type { AppConfig } from '../config/index.js';
+import {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+} from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import type { AppConfig } from "../config/index.js";
 
 /** Options for generating a pre-signed upload URL. */
 export interface PreSignedUploadOptions {
@@ -38,7 +42,9 @@ export class S3StorageClient {
    * @param options - Upload options including key, content type, and optional expiry
    * @returns The pre-signed URL and the S3 key
    */
-  async generatePresignedPutUrl(options: PreSignedUploadOptions): Promise<PreSignedUploadResult> {
+  async generatePresignedPutUrl(
+    options: PreSignedUploadOptions,
+  ): Promise<PreSignedUploadResult> {
     const command = new PutObjectCommand({
       Bucket: this.bucketName,
       Key: options.key,
@@ -58,7 +64,10 @@ export class S3StorageClient {
    * @param expiresIn - URL expiry in seconds (default: 3600)
    * @returns The pre-signed download URL
    */
-  async generatePresignedGetUrl(key: string, expiresIn: number = 3600): Promise<string> {
+  async generatePresignedGetUrl(
+    key: string,
+    expiresIn: number = 3600,
+  ): Promise<string> {
     const command = new GetObjectCommand({
       Bucket: this.bucketName,
       Key: key,

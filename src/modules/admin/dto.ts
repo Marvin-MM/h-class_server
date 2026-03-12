@@ -1,12 +1,21 @@
-import { z } from 'zod';
+import { z } from "zod";
 
 export const applicationActionSchema = z.object({
   reason: z.string().max(1000).optional(), // Required for denial
 });
 
+export const createConfigSchema = z.object({
+  key: z.string().min(1, "Config key is required").max(200),
+  value: z.string().min(1, "Config value is required"),
+});
+
 export const updateConfigSchema = z.object({
   key: z.string().min(1),
   value: z.string().min(1),
+});
+
+export const deleteConfigSchema = z.object({
+  key: z.string().min(1, "Config key is required"),
 });
 
 export const auditLogQuerySchema = z.object({
@@ -25,6 +34,10 @@ export const financialSummaryQuerySchema = z.object({
 });
 
 export type ApplicationActionDto = z.infer<typeof applicationActionSchema>;
+export type CreateConfigDto = z.infer<typeof createConfigSchema>;
 export type UpdateConfigDto = z.infer<typeof updateConfigSchema>;
+export type DeleteConfigDto = z.infer<typeof deleteConfigSchema>;
 export type AuditLogQueryDto = z.infer<typeof auditLogQuerySchema>;
-export type FinancialSummaryQueryDto = z.infer<typeof financialSummaryQuerySchema>;
+export type FinancialSummaryQueryDto = z.infer<
+  typeof financialSummaryQuerySchema
+>;

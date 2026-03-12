@@ -1,5 +1,5 @@
-import type { AppConfig } from '../config/index.js';
-import { logger } from '../shared/utils/logger.js';
+import type { AppConfig } from "../config/index.js";
+import { logger } from "../shared/utils/logger.js";
 
 /**
  * Cloudflare DNS API adapter.
@@ -9,7 +9,7 @@ export class CloudflareClient {
   private readonly apiToken: string;
   private readonly zoneId: string;
   private readonly rootDomain: string;
-  private readonly baseUrl = 'https://api.cloudflare.com/client/v4';
+  private readonly baseUrl = "https://api.cloudflare.com/client/v4";
 
   constructor(config: AppConfig) {
     this.apiToken = config.CLOUDFLARE_API_TOKEN;
@@ -25,7 +25,7 @@ export class CloudflareClient {
   async createSubdomain(subdomain: string): Promise<string> {
     const url = `${this.baseUrl}/zones/${this.zoneId}/dns_records`;
     const body = {
-      type: 'CNAME',
+      type: "CNAME",
       name: `${subdomain}.${this.rootDomain}`,
       content: this.rootDomain,
       ttl: 3600,
@@ -33,23 +33,35 @@ export class CloudflareClient {
     };
 
     const response = await fetch(url, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Authorization': `Bearer ${this.apiToken}`,
-        'Content-Type': 'application/json',
+        Authorization: `Bearer ${this.apiToken}`,
+        "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
     });
 
-    const data = await response.json() as { success: boolean; result?: { id: string }; errors?: Array<{ message: string }> };
+    const data = (await response.json()) as {
+      success: boolean;
+      result?: { id: string };
+      errors?: Array<{ message: string }>;
+    };
 
     if (!data.success || !data.result) {
-      const errorMsg = data.errors?.map((e) => e.message).join(', ') ?? 'Unknown Cloudflare error';
-      logger.error('Cloudflare DNS record creation failed', { subdomain, error: errorMsg });
+      const errorMsg =
+        data.errors?.map((e) => e.message).join(", ") ??
+        "Unknown Cloudflare error";
+      logger.error("Cloudflare DNS record creation failed", {
+        subdomain,
+        error: errorMsg,
+      });
       throw new Error(`Cloudflare API error: ${errorMsg}`);
     }
 
-    logger.info('Cloudflare DNS record created', { subdomain, recordId: data.result.id });
+    logger.info("Cloudflare DNS record created", {
+      subdomain,
+      recordId: data.result.id,
+    });
     return data.result.id;
   }
 
@@ -61,20 +73,28 @@ export class CloudflareClient {
     const url = `${this.baseUrl}/zones/${this.zoneId}/dns_records/${recordId}`;
 
     const response = await fetch(url, {
-      method: 'DELETE',
+      method: "DELETE",
       headers: {
-        'Authorization': `Bearer ${this.apiToken}`,
+        Authorization: `Bearer ${this.apiToken}`,
       },
     });
 
-    const data = await response.json() as { success: boolean; errors?: Array<{ message: string }> };
+    const data = (await response.json()) as {
+      success: boolean;
+      errors?: Array<{ message: string }>;
+    };
 
     if (!data.success) {
-      const errorMsg = data.errors?.map((e) => e.message).join(', ') ?? 'Unknown Cloudflare error';
-      logger.error('Cloudflare DNS record deletion failed', { recordId, error: errorMsg });
+      const errorMsg =
+        data.errors?.map((e) => e.message).join(", ") ??
+        "Unknown Cloudflare error";
+      logger.error("Cloudflare DNS record deletion failed", {
+        recordId,
+        error: errorMsg,
+      });
       throw new Error(`Cloudflare API error: ${errorMsg}`);
     }
 
-    logger.info('Cloudflare DNS record deleted', { recordId });
+    logger.info("Cloudflare DNS record deleted", { recordId });
   }
 }

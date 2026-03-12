@@ -1,4 +1,4 @@
-import Stripe from 'stripe';
+import Stripe from "stripe";
 import type {
   IPaymentGateway,
   CreatePaymentIntentOptions,
@@ -10,10 +10,10 @@ import type {
   TransferOptions,
   TransferResult,
   WebhookEvent,
-} from './gateway.js';
-import type { AppConfig } from '../../config/index.js';
-import { PaymentError } from '../../shared/errors/index.js';
-import { logger } from '../../shared/utils/logger.js';
+} from "./gateway.js";
+import type { AppConfig } from "../../config/index.js";
+import { PaymentError } from "../../shared/errors/index.js";
+import { logger } from "../../shared/utils/logger.js";
 
 /**
  * Stripe implementation of the payment gateway interface.
@@ -25,7 +25,9 @@ export class StripePaymentGateway implements IPaymentGateway {
     private readonly config: AppConfig,
   ) {}
 
-  async createPaymentIntent(options: CreatePaymentIntentOptions): Promise<PaymentIntentResult> {
+  async createPaymentIntent(
+    options: CreatePaymentIntentOptions,
+  ): Promise<PaymentIntentResult> {
     try {
       const intent = await this.stripe.paymentIntents.create(
         {
@@ -39,12 +41,12 @@ export class StripePaymentGateway implements IPaymentGateway {
 
       return {
         id: intent.id,
-        clientSecret: intent.client_secret ?? '',
+        clientSecret: intent.client_secret ?? "",
         status: intent.status,
       };
     } catch (error) {
-      logger.error('Stripe createPaymentIntent failed', { error });
-      throw new PaymentError('Failed to create payment intent');
+      logger.error("Stripe createPaymentIntent failed", { error });
+      throw new PaymentError("Failed to create payment intent");
     }
   }
 
@@ -53,12 +55,12 @@ export class StripePaymentGateway implements IPaymentGateway {
       const intent = await this.stripe.paymentIntents.retrieve(paymentIntentId);
       return {
         id: intent.id,
-        clientSecret: intent.client_secret ?? '',
+        clientSecret: intent.client_secret ?? "",
         status: intent.status,
       };
     } catch (error) {
-      logger.error('Stripe confirmPayment failed', { error });
-      throw new PaymentError('Failed to confirm payment');
+      logger.error("Stripe confirmPayment failed", { error });
+      throw new PaymentError("Failed to confirm payment");
     }
   }
 
@@ -67,17 +69,19 @@ export class StripePaymentGateway implements IPaymentGateway {
       const refund = await this.stripe.refunds.create({
         payment_intent: options.paymentIntentId,
         ...(options.amount ? { amount: options.amount } : {}),
-        ...(options.reason ? { reason: options.reason as Stripe.RefundCreateParams.Reason } : {}),
+        ...(options.reason
+          ? { reason: options.reason as Stripe.RefundCreateParams.Reason }
+          : {}),
       });
 
       return {
         id: refund.id,
-        status: refund.status ?? 'unknown',
+        status: refund.status ?? "unknown",
         amount: refund.amount,
       };
     } catch (error) {
-      logger.error('Stripe issueRefund failed', { error });
-      throw new PaymentError('Failed to issue refund');
+      logger.error("Stripe issueRefund failed", { error });
+      throw new PaymentError("Failed to issue refund");
     }
   }
 
@@ -94,15 +98,15 @@ export class StripePaymentGateway implements IPaymentGateway {
         data: event.data.object as unknown as Record<string, unknown>,
       };
     } catch (error) {
-      logger.error('Stripe webhook signature verification failed', { error });
-      throw new PaymentError('Invalid webhook signature', 400);
+      logger.error("Stripe webhook signature verification failed", { error });
+      throw new PaymentError("Invalid webhook signature", 400);
     }
   }
 
   async createConnectAccount(email: string): Promise<ConnectAccountResult> {
     try {
       const account = await this.stripe.accounts.create({
-        type: 'express',
+        type: "express",
         email,
         capabilities: {
           card_payments: { requested: true },
@@ -112,8 +116,8 @@ export class StripePaymentGateway implements IPaymentGateway {
 
       return { accountId: account.id };
     } catch (error) {
-      logger.error('Stripe createConnectAccount failed', { error });
-      throw new PaymentError('Failed to create connected account');
+      logger.error("Stripe createConnectAccount failed", { error });
+      throw new PaymentError("Failed to create connected account");
     }
   }
 
@@ -127,13 +131,13 @@ export class StripePaymentGateway implements IPaymentGateway {
         account: accountId,
         refresh_url: refreshUrl,
         return_url: returnUrl,
-        type: 'account_onboarding',
+        type: "account_onboarding",
       });
 
       return { url: link.url };
     } catch (error) {
-      logger.error('Stripe createOnboardingLink failed', { error });
-      throw new PaymentError('Failed to create onboarding link');
+      logger.error("Stripe createOnboardingLink failed", { error });
+      throw new PaymentError("Failed to create onboarding link");
     }
   }
 
@@ -143,7 +147,9 @@ export class StripePaymentGateway implements IPaymentGateway {
         amount: options.amount,
         currency: options.currency,
         destination: options.destinationAccountId,
-        ...(options.transferGroup ? { transfer_group: options.transferGroup } : {}),
+        ...(options.transferGroup
+          ? { transfer_group: options.transferGroup }
+          : {}),
       });
 
       return {
@@ -151,8 +157,8 @@ export class StripePaymentGateway implements IPaymentGateway {
         amount: transfer.amount,
       };
     } catch (error) {
-      logger.error('Stripe transferFunds failed', { error });
-      throw new PaymentError('Failed to transfer funds');
+      logger.error("Stripe transferFunds failed", { error });
+      throw new PaymentError("Failed to transfer funds");
     }
   }
 }

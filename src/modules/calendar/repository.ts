@@ -1,31 +1,41 @@
-import type { PrismaClient, CalendarEvent } from '@prisma/client';
+import type { PrismaClient } from "@prisma/client";
 
 export class CalendarRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
-  async createMany(events: { userId: string; sessionId: string; title: string; startsAt: Date; endsAt: Date }[]): Promise<void> {
-    await this.prisma.calendarEvent.createMany({ data: events });
-  }
-
-  async findByUserIdAndDateRange(userId: string, startDate: Date, endDate: Date): Promise<CalendarEvent[]> {
-    return this.prisma.calendarEvent.findMany({
+  async findUserEventsAndDateRange(
+    userId: string,
+    startDate: Date,
+    endDate: Date,
+  ) {
+    return this.prisma.session.findMany({
       where: {
-        userId,
-        startsAt: { gte: startDate },
-        endsAt: { lte: endDate },
+        scheduledAt: { gte: startDate, lte: endDate },
+        OR: [
+          { course: { tutorId: userId } },
+          { course: { enrollments: { some: { userId } } } },
+        ],
       },
-      orderBy: { startsAt: 'asc' },
+      include: {
+        course: { select: { title: true } },
+      },
+      orderBy: { scheduledAt: "asc" },
     });
   }
 
-  async findByUserId(userId: string): Promise<CalendarEvent[]> {
-    return this.prisma.calendarEvent.findMany({
-      where: { userId },
-      orderBy: { startsAt: 'asc' },
+  async findUserEvents(userId: string) {
+    return this.prisma.session.findMany({
+      where: {
+        OR: [
+          { course: { tutorId: userId } },
+          { course: { enrollments: { some: { userId } } } },
+        ],
+      },
+      include: {
+        course: { select: { title: true } },
+      },
+      orderBy: { scheduledAt: "asc" },
     });
-  }
-
-  async updateBySessionId(sessionId: string, data: { startsAt?: Date; endsAt?: Date; title?: string }): Promise<void> {
-    await this.prisma.calendarEvent.updateMany({ where: { sessionId }, data });
   }
 }
+

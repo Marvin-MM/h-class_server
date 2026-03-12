@@ -1,4 +1,4 @@
-import type { Response } from 'express';
+import type { Response } from "express";
 
 /** Standard success response shape. */
 interface SuccessResponse<T> {

@@ -1,8 +1,8 @@
-import type { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
-import type { Redis } from 'ioredis';
-import { AuthenticationError } from '../shared/errors/index.js';
-import type { AppConfig } from '../config/index.js';
+import type { Request, Response, NextFunction } from "express";
+import jwt from "jsonwebtoken";
+import type { Redis } from "ioredis";
+import { AuthenticationError } from "../shared/errors/index.js";
+import type { AppConfig } from "../config/index.js";
 
 /** JWT access token payload shape. */
 export interface JwtPayload {
@@ -16,12 +16,16 @@ export interface JwtPayload {
  * and verifies that the session still exists in Redis (single-device enforcement).
  */
 export function createAuthMiddleware(config: AppConfig, redisClient: Redis) {
-  return async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
+  return async (
+    req: Request,
+    _res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
     try {
       const token = req.cookies?.accessToken as string | undefined;
 
       if (!token) {
-        throw new AuthenticationError('Access token is required');
+        throw new AuthenticationError("Access token is required");
       }
 
       const decoded = jwt.verify(token, config.JWT_SECRET) as JwtPayload;
@@ -30,9 +34,9 @@ export function createAuthMiddleware(config: AppConfig, redisClient: Redis) {
       const sessionData = await redisClient.get(`session:${decoded.sessionId}`);
       if (!sessionData) {
         // Session was invalidated (logged out or replaced by another device)
-        _res.clearCookie('accessToken');
-        _res.clearCookie('refreshToken');
-        throw new AuthenticationError('Session expired or invalidated');
+        _res.clearCookie("accessToken");
+        _res.clearCookie("refreshToken");
+        throw new AuthenticationError("Session expired or invalidated");
       }
 
       // Attach user info to request
@@ -49,11 +53,11 @@ export function createAuthMiddleware(config: AppConfig, redisClient: Redis) {
         return;
       }
       if (error instanceof jwt.JsonWebTokenError) {
-        next(new AuthenticationError('Invalid access token'));
+        next(new AuthenticationError("Invalid access token"));
         return;
       }
       if (error instanceof jwt.TokenExpiredError) {
-        next(new AuthenticationError('Access token expired'));
+        next(new AuthenticationError("Access token expired"));
         return;
       }
       next(error);

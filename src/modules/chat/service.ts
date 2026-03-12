@@ -1,94 +1,103 @@
-import type { StreamChat, ChannelData } from 'stream-chat';
-import type { ChannelType } from '@prisma/client';
-import type { ChatRepository } from './repository.js';
-import type { CoursesRepository } from '../courses/repository.js';
-import type { CreateChannelDto } from './dto.js';
-import type { ChatTokenResponse, ChannelResponse } from './types.js';
-import { AuthorizationError, ValidationError } from '../../shared/errors/index.js';
-import { logger } from '../../shared/utils/logger.js';
+import type { ChatRepository } from "./repository.js";
+import type { CoursesRepository } from "../courses/repository.js";
+import type { CreateConversationDto, SendMessageDto } from "./dto.js";
+import type { ConversationResponse, MessageResponse } from "./types.js";
+import { AuthorizationError, ConflictError, NotFoundError } from "../../shared/errors/index.js";
+import { logger } from "../../shared/utils/logger.js";
+import type { Role, ChannelType } from "@prisma/client";
 
 export class ChatService {
   constructor(
     private readonly chatRepository: ChatRepository,
     private readonly coursesRepository: CoursesRepository,
-    private readonly streamChatClient: StreamChat,
-    private readonly getStreamApiKey: string,
   ) {}
 
-  /** Generates a GetStream Chat token for the authenticated user. Never stored in DB. */
-  getToken(userId: string): ChatTokenResponse {
-    const token = this.streamChatClient.createToken(userId);
-    return { token, userId };
-  }
+  async createConversation(
+    userId: string,
+    role: Role,
+    dto: CreateConversationDto,
+  ): Promise<ConversationResponse> {
+    const participants = new Set<string>();
+    participants.add(userId);
 
-  /** Creates a chat channel based on type. */
-  async createChannel(userId: string, userRole: string, dto: CreateChannelDto): Promise<ChannelResponse> {
-    let channelId: string;
-    let members: string[];
-
-    switch (dto.type) {
-      case 'STUDENT_TUTOR': {
-        if (!dto.courseId) throw new ValidationError('courseId is required for STUDENT_TUTOR channels');
-        const isEnrolled = await this.coursesRepository.isEnrolled(userId, dto.courseId);
-        if (!isEnrolled) throw new AuthorizationError('You must be enrolled in the course');
-
-        const course = await this.coursesRepository.findById(dto.courseId);
-        if (!course) throw new ValidationError('Course not found');
-
-        channelId = `st-${dto.courseId}-${userId}`;
-        members = [userId, course.tutorId];
-        break;
+    if (dto.type === "DIRECT") {
+      if (!dto.targetUserId) {
+        throw new ConflictError("targetUserId is required for DIRECT channels");
       }
-      case 'COURSE_SUPPORT': {
-        if (!dto.courseId) throw new ValidationError('courseId is required for COURSE_SUPPORT channels');
-        channelId = `cs-${dto.courseId}`;
-        members = [userId]; // Members are managed dynamically
-        break;
+      if (dto.targetUserId === userId) {
+        throw new ConflictError("Cannot create a direct channel with yourself");
       }
-      case 'SUPPORT': {
-        channelId = `support-${userId}`;
-        members = [userId]; // Admin members added automatically
-        break;
+      participants.add(dto.targetUserId);
+    } else if (dto.type === "COURSE") {
+      if (!dto.courseId) {
+        throw new ConflictError("courseId is required for COURSE channels");
       }
-      default:
-        throw new ValidationError('Invalid channel type');
+      const course = await this.coursesRepository.findById(dto.courseId);
+      if (!course) {
+        throw new NotFoundError("Course", dto.courseId);
+      }
+      if (course.tutorId !== userId && role !== "ADMIN") {
+        throw new AuthorizationError("Only the tutor can create a course channel");
+      }
+      participants.add(course.tutorId);
+      const enrollments = await this.chatRepository.getCourseEnrollments(course.id);
+      enrollments.forEach(e => participants.add(e.userId));
+    } else if (dto.type === "SUPPORT") {
+      const admins = await this.chatRepository.getAdmins();
+      admins.forEach(a => participants.add(a.id));
     }
 
-    // Check if channel already exists in our DB
-    let existing = await this.chatRepository.findByStreamChannelId(channelId);
-    if (!existing) {
-      // Create channel in GetStream with attachments disabled
-      try {
-        const channel = this.streamChatClient.channel('messaging', channelId, {
-          members,
-          created_by_id: userId,
-        } as ChannelData);
+    const conversation = await this.chatRepository.createConversation({
+      type: dto.type as ChannelType,
+      courseId: dto.courseId,
+      participantIds: Array.from(participants),
+    });
 
-        await channel.create();
+    logger.info("Conversation created natively", {
+      conversationId: conversation.id,
+      type: dto.type,
+    });
 
-        // Disable file/image uploads at channel level
-        await channel.updatePartial({
-          set: {
-            config_overrides: {
-              uploads: false,
-            },
-          } as Record<string, unknown>,
-        });
-      } catch (error) {
-        logger.error('Failed to create GetStream Chat channel', { error, channelId });
-      }
-
-      existing = await this.chatRepository.create({
-        type: dto.type as ChannelType,
-        courseId: dto.courseId,
-        getStreamChannelId: channelId,
-      });
-    }
-
-    return this.toResponse(existing);
+    return conversation as unknown as ConversationResponse;
   }
 
-  private toResponse(ch: { id: string; type: string; courseId: string | null; getStreamChannelId: string; createdAt: Date }): ChannelResponse {
-    return { id: ch.id, type: ch.type, courseId: ch.courseId, getStreamChannelId: ch.getStreamChannelId, createdAt: ch.createdAt };
+  async getUserConversations(userId: string) {
+    const records = await this.chatRepository.getUserConversations(userId);
+    return records;
+  }
+
+  async sendMessage(conversationId: string, userId: string, dto: SendMessageDto): Promise<MessageResponse> {
+    const conversation = await this.chatRepository.findConversationById(conversationId);
+    if (!conversation) {
+      throw new NotFoundError("Conversation", conversationId);
+    }
+
+    const isParticipant = conversation.participants.some(p => p.userId === userId);
+    if (!isParticipant) {
+      throw new AuthorizationError("You are not a participant in this conversation");
+    }
+
+    const message = await this.chatRepository.createMessage(conversationId, userId, dto.content);
+
+    logger.info("Message sent natively", { messageId: message.id, conversationId });
+    return message;
+  }
+
+  async getMessages(conversationId: string, userId: string, page: number, pageSize: number) {
+    const conversation = await this.chatRepository.findConversationById(conversationId);
+    if (!conversation) {
+      throw new NotFoundError("Conversation", conversationId);
+    }
+
+    const isParticipant = conversation.participants.some(p => p.userId === userId);
+    if (!isParticipant) {
+      throw new AuthorizationError("You are not a participant in this conversation");
+    }
+
+    const result = await this.chatRepository.getMessages(conversationId, page, pageSize);
+    return {
+      data: result.data,
+      meta: { page, pageSize, total: result.total }
+    };
   }
 }

@@ -1,4 +1,4 @@
-import { AsyncLocalStorage } from 'async_hooks';
+import { AsyncLocalStorage } from "async_hooks";
 
 /** Context stored per-request for audit trail and logging. */
 export interface RequestContext {
@@ -19,5 +19,5 @@ export const asyncContext = new AsyncLocalStorage<RequestContext>();
  * Returns a default context if none is set (e.g., in background jobs).
  */
 export function getCurrentContext(): RequestContext {
-  return asyncContext.getStore() ?? { actorId: null, requestId: 'system' };
+  return asyncContext.getStore() ?? { actorId: null, requestId: "system" };
 }

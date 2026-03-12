@@ -1,67 +1,190 @@
-import type { AssessmentType } from '@prisma/client';
-import type { AssessmentsRepository } from './repository.js';
-import type { CoursesRepository } from '../courses/repository.js';
-import type { MediaService } from '../media/service.js';
-import type { CreateAssessmentDto, SubmitAssessmentDto, GradeSubmissionDto } from './dto.js';
-import type { AssessmentResponse, SubmissionResponse } from './types.js';
-import { ALLOWED_CONTENT_TYPES } from '../media/service.js';
+import type { AssessmentType } from "@prisma/client";
+import type { AssessmentsRepository } from "./repository.js";
+import type { CoursesRepository } from "../courses/repository.js";
+import type { MediaService } from "../media/service.js";
+import type { S3StorageClient } from "../../infrastructure/s3.js";
+import type {
+  CreateAssessmentDto,
+  SubmitAssessmentDto,
+  GradeSubmissionDto,
+} from "./dto.js";
+import type { AssessmentResponse, SubmissionResponse } from "./types.js";
+import { ALLOWED_CONTENT_TYPES } from "../media/service.js";
 import {
   NotFoundError,
   ConflictError,
   AuthorizationError,
-} from '../../shared/errors/index.js';
-import { eventBus, AppEvents } from '../../shared/utils/event-bus.js';
-import { logger } from '../../shared/utils/logger.js';
+} from "../../shared/errors/index.js";
+import { eventBus, AppEvents } from "../../shared/utils/event-bus.js";
+import { logger } from "../../shared/utils/logger.js";
 
 export class AssessmentsService {
   constructor(
     private readonly assessmentsRepository: AssessmentsRepository,
     private readonly coursesRepository: CoursesRepository,
     private readonly mediaService: MediaService,
+    private readonly s3Client: S3StorageClient,
   ) {}
 
-  async createAssessment(tutorId: string, dto: CreateAssessmentDto): Promise<AssessmentResponse> {
-    const course = await this.coursesRepository.findById(dto.courseId);
-    if (!course) throw new NotFoundError('Course', dto.courseId);
-    if (course.tutorId !== tutorId) throw new AuthorizationError('You can only create assessments for your own courses');
+  // ─── Assessment Upload URL (Tutor uploads question/instruction file) ───────
 
-    // Enforce single FINAL_ASSESSMENT per course
-    if (dto.type === 'FINAL_ASSESSMENT') {
-      const hasFinal = await this.assessmentsRepository.hasFinalAssessment(dto.courseId);
-      if (hasFinal) throw new ConflictError('This course already has a final assessment');
+  /** Generates a pre-signed upload URL for an assessment file. */
+  async getAssessmentUploadUrl(
+    tutorId: string,
+    courseId: string,
+    contentType: string,
+    fileName: string,
+  ) {
+    const course = await this.coursesRepository.findById(courseId);
+    if (!course) throw new NotFoundError("Course", courseId);
+    if (course.tutorId !== tutorId)
+      throw new AuthorizationError(
+        "You can only upload assessments for your own courses",
+      );
+
+    const prefix = `assessments/${courseId}`;
+
+    return this.mediaService.generateUploadUrl({
+      prefix,
+      contentType,
+      fileName,
+      allowedContentTypes: [...ALLOWED_CONTENT_TYPES.notes], // Same document types as notes
+      maxFileSizeMb: 50,
+    });
+  }
+
+  // ─── Assessment CRUD ───────────────────────────────────────────────────────
+
+  async createAssessment(
+    tutorId: string,
+    dto: CreateAssessmentDto,
+  ): Promise<AssessmentResponse> {
+    const course = await this.coursesRepository.findById(dto.courseId);
+    if (!course) throw new NotFoundError("Course", dto.courseId);
+    if (course.tutorId !== tutorId)
+      throw new AuthorizationError(
+        "You can only create assessments for your own courses",
+      );
+
+    if (dto.type === "FINAL_ASSESSMENT") {
+      const hasFinal = await this.assessmentsRepository.hasFinalAssessment(
+        dto.courseId,
+      );
+      if (hasFinal)
+        throw new ConflictError("This course already has a final assessment");
     }
 
     const assessment = await this.assessmentsRepository.create({
       courseId: dto.courseId,
       title: dto.title,
       type: dto.type as AssessmentType,
+      s3Key: dto.s3Key,
     });
 
-    logger.info('Assessment created', { assessmentId: assessment.id, type: dto.type });
+    logger.info("Assessment created", {
+      assessmentId: assessment.id,
+      type: dto.type,
+    });
     return this.toAssessmentResponse(assessment);
   }
 
-  async getAssessment(assessmentId: string): Promise<AssessmentResponse> {
+  /** Gets an assessment with a download URL for the file (if attached). */
+  async getAssessment(
+    assessmentId: string,
+    userId: string,
+  ): Promise<AssessmentResponse> {
     const assessment = await this.assessmentsRepository.findById(assessmentId);
-    if (!assessment) throw new NotFoundError('Assessment', assessmentId);
-    return this.toAssessmentResponse(assessment);
+    if (!assessment) throw new NotFoundError("Assessment", assessmentId);
+
+    // Verify access — tutor or enrolled student
+    const course = await this.coursesRepository.findById(assessment.courseId);
+    if (!course) throw new NotFoundError("Course", assessment.courseId);
+
+    if (course.tutorId !== userId) {
+      const enrollment = await this.coursesRepository.getEnrollment(
+        userId,
+        assessment.courseId,
+      );
+      if (!enrollment)
+        throw new AuthorizationError("You must be enrolled in the course");
+      if (
+        assessment.type === "FINAL_ASSESSMENT" &&
+        enrollment.paymentStatus === "PARTIAL"
+      ) {
+        throw new AuthorizationError(
+          "You must complete your course payment to access the final assessment",
+        );
+      }
+    }
+
+    return this.toAssessmentResponseWithUrl(assessment);
   }
 
-  async getCourseAssessments(courseId: string): Promise<AssessmentResponse[]> {
-    const assessments = await this.assessmentsRepository.findByCourseId(courseId);
-    return assessments.map(this.toAssessmentResponse);
+  /** Gets all assessments for a course with download URLs. */
+  async getCourseAssessments(
+    courseId: string,
+    userId: string,
+  ): Promise<AssessmentResponse[]> {
+    // Verify access
+    const course = await this.coursesRepository.findById(courseId);
+    if (!course) throw new NotFoundError("Course", courseId);
+
+    if (course.tutorId !== userId) {
+      const enrollment = await this.coursesRepository.getEnrollment(
+        userId,
+        courseId,
+      );
+      if (!enrollment)
+        throw new AuthorizationError("You must be enrolled in the course");
+
+      let assessments =
+        await this.assessmentsRepository.findByCourseId(courseId);
+      if (enrollment.paymentStatus === "PARTIAL") {
+        // Filter out the final assessment so it doesn't even show up until paid, or return it mapped as inaccessible.
+        // Returning them all but letting `getAssessment` block download is safer,
+        // however we can throw if they try to fetch the list and it contains a final assessment?
+        // Let's just filter it out for partial payments to hide it.
+        assessments = assessments.filter((a) => a.type !== "FINAL_ASSESSMENT");
+      }
+      return Promise.all(
+        assessments.map((a) => this.toAssessmentResponseWithUrl(a)),
+      );
+    }
+
+    const assessments =
+      await this.assessmentsRepository.findByCourseId(courseId);
+    return Promise.all(
+      assessments.map((a) => this.toAssessmentResponseWithUrl(a)),
+    );
   }
 
-  /** Generates a pre-signed S3 URL for submission upload. */
-  async getSubmissionUploadUrl(assessmentId: string, studentId: string, contentType: string, fileName: string) {
+  // ─── Submission Upload & Submit ────────────────────────────────────────────
+
+  /** Generates a pre-signed S3 URL for a student to upload their submission. */
+  async getSubmissionUploadUrl(
+    assessmentId: string,
+    studentId: string,
+    contentType: string,
+    fileName: string,
+  ) {
     const assessment = await this.assessmentsRepository.findById(assessmentId);
-    if (!assessment) throw new NotFoundError('Assessment', assessmentId);
+    if (!assessment) throw new NotFoundError("Assessment", assessmentId);
 
-    // Verify enrollment
-    const isEnrolled = await this.coursesRepository.isEnrolled(studentId, assessment.courseId);
-    if (!isEnrolled) throw new AuthorizationError('You must be enrolled in the course');
+    const enrollment = await this.coursesRepository.getEnrollment(
+      studentId,
+      assessment.courseId,
+    );
+    if (!enrollment)
+      throw new AuthorizationError("You must be enrolled in the course");
+    if (
+      assessment.type === "FINAL_ASSESSMENT" &&
+      enrollment.paymentStatus === "PARTIAL"
+    ) {
+      throw new AuthorizationError(
+        "You must complete your course payment to access the final assessment",
+      );
+    }
 
-    // Scoped S3 key
     const prefix = `submissions/${assessment.courseId}/${assessmentId}/${studentId}`;
 
     return this.mediaService.generateUploadUrl({
@@ -74,12 +197,28 @@ export class AssessmentsService {
   }
 
   /** Records a submission after the student has uploaded to S3. */
-  async submitAssessment(assessmentId: string, studentId: string, dto: SubmitAssessmentDto): Promise<SubmissionResponse> {
+  async submitAssessment(
+    assessmentId: string,
+    studentId: string,
+    dto: SubmitAssessmentDto,
+  ): Promise<SubmissionResponse> {
     const assessment = await this.assessmentsRepository.findById(assessmentId);
-    if (!assessment) throw new NotFoundError('Assessment', assessmentId);
+    if (!assessment) throw new NotFoundError("Assessment", assessmentId);
 
-    const isEnrolled = await this.coursesRepository.isEnrolled(studentId, assessment.courseId);
-    if (!isEnrolled) throw new AuthorizationError('You must be enrolled in the course');
+    const enrollment = await this.coursesRepository.getEnrollment(
+      studentId,
+      assessment.courseId,
+    );
+    if (!enrollment)
+      throw new AuthorizationError("You must be enrolled in the course");
+    if (
+      assessment.type === "FINAL_ASSESSMENT" &&
+      enrollment.paymentStatus === "PARTIAL"
+    ) {
+      throw new AuthorizationError(
+        "You must complete your course payment to access the final assessment",
+      );
+    }
 
     const submission = await this.assessmentsRepository.createSubmission({
       assessmentId,
@@ -87,22 +226,100 @@ export class AssessmentsService {
       s3Key: dto.s3Key,
     });
 
-    logger.info('Submission recorded', { submissionId: submission.id, assessmentId, studentId });
+    logger.info("Submission recorded", {
+      submissionId: submission.id,
+      assessmentId,
+      studentId,
+    });
     return this.toSubmissionResponse(submission);
   }
 
-  /** Grades a submission. If FINAL_ASSESSMENT, checks certificate eligibility. */
-  async gradeSubmission(submissionId: string, tutorId: string, dto: GradeSubmissionDto): Promise<SubmissionResponse> {
-    const submission = await this.assessmentsRepository.findSubmissionById(submissionId);
-    if (!submission) throw new NotFoundError('Submission', submissionId);
+  // ─── Download URLs for Submissions ─────────────────────────────────────────
 
-    const assessment = await this.assessmentsRepository.findById(submission.assessmentId);
-    if (!assessment) throw new NotFoundError('Assessment', submission.assessmentId);
+  /** Gets a download URL for a submission file. Accessible by the tutor or the student who submitted. */
+  async getSubmissionDownloadUrl(
+    submissionId: string,
+    userId: string,
+  ): Promise<{ downloadUrl: string }> {
+    const submission =
+      await this.assessmentsRepository.findSubmissionById(submissionId);
+    if (!submission) throw new NotFoundError("Submission", submissionId);
+
+    const assessment = await this.assessmentsRepository.findById(
+      submission.assessmentId,
+    );
+    if (!assessment)
+      throw new NotFoundError("Assessment", submission.assessmentId);
 
     const course = await this.coursesRepository.findById(assessment.courseId);
-    if (!course || course.tutorId !== tutorId) throw new AuthorizationError('You can only grade submissions for your own courses');
+    if (!course) throw new NotFoundError("Course", assessment.courseId);
 
-    const graded = await this.assessmentsRepository.gradeSubmission(submissionId, dto.score, dto.feedback);
+    // Access: tutor of the course or the student who submitted
+    if (course.tutorId !== userId && submission.studentId !== userId) {
+      throw new AuthorizationError(
+        "You can only download your own submissions or submissions for courses you tutor",
+      );
+    }
+
+    const downloadUrl = await this.s3Client.generatePresignedGetUrl(
+      submission.s3Key,
+      3600,
+    );
+    return { downloadUrl };
+  }
+
+  /** Gets all submissions for an assessment with download URLs. Tutor only. */
+  async getAssessmentSubmissions(
+    assessmentId: string,
+    tutorId: string,
+  ): Promise<SubmissionResponse[]> {
+    const assessment = await this.assessmentsRepository.findById(assessmentId);
+    if (!assessment) throw new NotFoundError("Assessment", assessmentId);
+
+    const course = await this.coursesRepository.findById(assessment.courseId);
+    if (!course || course.tutorId !== tutorId)
+      throw new AuthorizationError(
+        "You can only view submissions for your own courses",
+      );
+
+    const submissions =
+      await this.assessmentsRepository.findSubmissionsByAssessmentId(
+        assessmentId,
+      );
+    return Promise.all(
+      submissions.map((s) => this.toSubmissionResponseWithUrl(s)),
+    );
+  }
+
+  // ─── Grading ───────────────────────────────────────────────────────────────
+
+  /** Grades a submission. If FINAL_ASSESSMENT, checks certificate eligibility. */
+  async gradeSubmission(
+    submissionId: string,
+    tutorId: string,
+    dto: GradeSubmissionDto,
+  ): Promise<SubmissionResponse> {
+    const submission =
+      await this.assessmentsRepository.findSubmissionById(submissionId);
+    if (!submission) throw new NotFoundError("Submission", submissionId);
+
+    const assessment = await this.assessmentsRepository.findById(
+      submission.assessmentId,
+    );
+    if (!assessment)
+      throw new NotFoundError("Assessment", submission.assessmentId);
+
+    const course = await this.coursesRepository.findById(assessment.courseId);
+    if (!course || course.tutorId !== tutorId)
+      throw new AuthorizationError(
+        "You can only grade submissions for your own courses",
+      );
+
+    const graded = await this.assessmentsRepository.gradeSubmission(
+      submissionId,
+      dto.score,
+      dto.feedback,
+    );
 
     eventBus.emit(AppEvents.ASSESSMENT_GRADED, {
       submissionId: graded.id,
@@ -112,48 +329,149 @@ export class AssessmentsService {
       score: dto.score,
     });
 
-    // Certificate eligibility check for FINAL_ASSESSMENT
-    if (assessment.type === 'FINAL_ASSESSMENT') {
-      await this.checkCertificateEligibility(submission.studentId, assessment.courseId, course.passMark);
+    if (assessment.type === "FINAL_ASSESSMENT") {
+      await this.checkCertificateEligibility(
+        submission.studentId,
+        assessment.courseId,
+        course.passMark,
+      );
     }
 
-    logger.info('Submission graded', { submissionId, score: dto.score });
-    return this.toSubmissionResponse(graded);
+    logger.info("Submission graded", { submissionId, score: dto.score });
+    return this.toSubmissionResponseWithUrl(graded);
   }
 
-  /** Checks if a student has submitted all assessments and meets the pass mark. */
-  private async checkCertificateEligibility(studentId: string, courseId: string, passMark: unknown): Promise<void> {
-    const { assessments, submissions } = await this.assessmentsRepository.getStudentCourseSubmissions(courseId, studentId);
+  // ─── Helpers ───────────────────────────────────────────────────────────────
 
-    // Check all assessments are submitted
+  private async checkCertificateEligibility(
+    studentId: string,
+    courseId: string,
+    passMark: unknown,
+  ): Promise<void> {
+    const { assessments, submissions } =
+      await this.assessmentsRepository.getStudentCourseSubmissions(
+        courseId,
+        studentId,
+      );
+
     if (submissions.length < assessments.length) return;
 
-    // Check all are graded
     const allGraded = submissions.every((s) => s.gradedAt !== null);
     if (!allGraded) return;
 
-    // Check final score meets pass mark
     const finalSubmission = submissions.find((s) => {
       const assessment = assessments.find((a) => a.id === s.assessmentId);
-      return assessment?.type === 'FINAL_ASSESSMENT';
+      return assessment?.type === "FINAL_ASSESSMENT";
     });
 
     if (!finalSubmission || finalSubmission.score === null) return;
 
-    const finalScore = Number(finalSubmission.score);
+    // We implement a rigorous auto-grading criteria compiling all module scores
+    const totalScore = submissions.reduce((sum, s) => sum + Number(s.score || 0), 0);
+    const overallScore = Number((totalScore / submissions.length).toFixed(2));
     const passMarkNum = Number(passMark);
 
-    if (finalScore >= passMarkNum) {
+    if (overallScore >= passMarkNum) {
       eventBus.emit(AppEvents.CERTIFICATE_ELIGIBLE, { studentId, courseId });
-      logger.info('Certificate eligibility met', { studentId, courseId, finalScore, passMark: passMarkNum });
+      logger.info("Certificate eligibility met", {
+        studentId,
+        courseId,
+        overallScore,
+        passMark: passMarkNum,
+      });
     }
   }
 
-  private toAssessmentResponse(a: { id: string; courseId: string; title: string; type: string; createdAt: Date; updatedAt: Date }): AssessmentResponse {
-    return { id: a.id, courseId: a.courseId, title: a.title, type: a.type, createdAt: a.createdAt, updatedAt: a.updatedAt };
+  private toAssessmentResponse(a: {
+    id: string;
+    courseId: string;
+    title: string;
+    type: string;
+    s3Key: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+  }): AssessmentResponse {
+    return {
+      id: a.id,
+      courseId: a.courseId,
+      title: a.title,
+      type: a.type,
+      s3Key: a.s3Key,
+      createdAt: a.createdAt,
+      updatedAt: a.updatedAt,
+    };
   }
 
-  private toSubmissionResponse(s: { id: string; assessmentId: string; studentId: string; s3Key: string; score: unknown; feedback: string | null; gradedAt: Date | null; createdAt: Date }): SubmissionResponse {
-    return { id: s.id, assessmentId: s.assessmentId, studentId: s.studentId, s3Key: s.s3Key, score: s.score !== null ? String(s.score) : null, feedback: s.feedback, gradedAt: s.gradedAt, createdAt: s.createdAt };
+  private async toAssessmentResponseWithUrl(a: {
+    id: string;
+    courseId: string;
+    title: string;
+    type: string;
+    s3Key: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+  }): Promise<AssessmentResponse> {
+    const downloadUrl = a.s3Key
+      ? await this.s3Client.generatePresignedGetUrl(a.s3Key, 3600)
+      : undefined;
+    return {
+      id: a.id,
+      courseId: a.courseId,
+      title: a.title,
+      type: a.type,
+      s3Key: a.s3Key,
+      downloadUrl,
+      createdAt: a.createdAt,
+      updatedAt: a.updatedAt,
+    };
+  }
+
+  private toSubmissionResponse(s: {
+    id: string;
+    assessmentId: string;
+    studentId: string;
+    s3Key: string;
+    score: unknown;
+    feedback: string | null;
+    gradedAt: Date | null;
+    createdAt: Date;
+  }): SubmissionResponse {
+    return {
+      id: s.id,
+      assessmentId: s.assessmentId,
+      studentId: s.studentId,
+      s3Key: s.s3Key,
+      score: s.score !== null ? String(s.score) : null,
+      feedback: s.feedback,
+      gradedAt: s.gradedAt,
+      createdAt: s.createdAt,
+    };
+  }
+
+  private async toSubmissionResponseWithUrl(s: {
+    id: string;
+    assessmentId: string;
+    studentId: string;
+    s3Key: string;
+    score: unknown;
+    feedback: string | null;
+    gradedAt: Date | null;
+    createdAt: Date;
+  }): Promise<SubmissionResponse> {
+    const downloadUrl = await this.s3Client.generatePresignedGetUrl(
+      s.s3Key,
+      3600,
+    );
+    return {
+      id: s.id,
+      assessmentId: s.assessmentId,
+      studentId: s.studentId,
+      s3Key: s.s3Key,
+      downloadUrl,
+      score: s.score !== null ? String(s.score) : null,
+      feedback: s.feedback,
+      gradedAt: s.gradedAt,
+      createdAt: s.createdAt,
+    };
   }
 }
