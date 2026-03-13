@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { UsersController } from "./controller.js";
 import { validate } from "../../middleware/validate.js";
 import { updateProfileSchema } from "./dto.js";
+import { roleGuard } from "../../middleware/role-guard.js";
 import multer from "multer";
 
 // Use memory storage for direct buffer access
@@ -24,6 +25,9 @@ export function createUsersRouter(
 
   // All routes require authentication
   router.use(authMiddleware);
+
+  // Admin-only: list users with optional role filter
+  router.get("/", roleGuard("ADMIN"), controller.listUsers);
 
   router.get("/me", controller.getProfile);
   router.patch("/me", validate(updateProfileSchema), controller.updateProfile);

@@ -1,4 +1,4 @@
-import type { PrismaClient, User } from "@prisma/client";
+import type { PrismaClient, User, Role } from "@prisma/client";
 
 /**
  * Repository for user profile database operations.
@@ -22,6 +22,25 @@ export class UsersRepository {
       where: { id },
       data,
     });
+  }
+
+  /** Returns paginated non-deleted users, optionally filtered by role. */
+  async findAll(
+    page: number,
+    pageSize: number,
+    role?: Role,
+  ): Promise<{ data: User[]; total: number }> {
+    const where = { deletedAt: null, ...(role ? { role } : {}) };
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.user.findMany({
+        where,
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        orderBy: { createdAt: "desc" },
+      }),
+      this.prisma.user.count({ where }),
+    ]);
+    return { data, total };
   }
 
   /** Soft-deletes a user by setting the deletedAt timestamp. */

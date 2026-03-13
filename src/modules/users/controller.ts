@@ -1,7 +1,8 @@
 import type { Request, Response, NextFunction } from "express";
 import type { UsersService } from "./service.js";
 import type { UpdateProfileDto } from "./dto.js";
-import { sendSuccess } from "../../shared/utils/response.js";
+import { sendSuccess, sendPaginated } from "../../shared/utils/response.js";
+import type { Role } from "@prisma/client";
 import { ValidationError } from "../../shared/errors/index.js";
 
 /**
@@ -9,6 +10,23 @@ import { ValidationError } from "../../shared/errors/index.js";
  */
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
+
+  /** GET /users — Admin only. Optionally filter by ?role=STUDENT|TUTOR|ADMIN */
+  listUsers = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      const page = parseInt(req.query["page"] as string) || 1;
+      const pageSize = parseInt(req.query["pageSize"] as string) || 20;
+      const role = req.query["role"] as Role | undefined;
+      const result = await this.usersService.listUsers(page, pageSize, role);
+      sendPaginated(res, result.data, result.meta);
+    } catch (error) {
+      next(error);
+    }
+  };
 
   /** GET /users/me */
   getProfile = async (

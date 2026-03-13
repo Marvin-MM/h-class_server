@@ -1,4 +1,5 @@
 import type { Redis } from "ioredis";
+import type { Role } from "@prisma/client";
 import type { UsersRepository } from "./repository.js";
 import type { UpdateProfileDto } from "./dto.js";
 import type { UserProfileResponse } from "./types.js";
@@ -15,6 +16,19 @@ export class UsersService {
     private readonly redisClient: Redis,
     private readonly cloudinaryClient: typeof cloudinary,
   ) {}
+
+  /** [Admin] Returns all users, optionally filtered by role. */
+  async listUsers(
+    page: number,
+    pageSize: number,
+    role?: Role,
+  ) {
+    const result = await this.usersRepository.findAll(page, pageSize, role);
+    return {
+      data: result.data.map(this.toProfileResponse),
+      meta: { page, pageSize, total: result.total },
+    };
+  }
 
   /** Retrieves the authenticated user's profile. */
   async getProfile(userId: string): Promise<UserProfileResponse> {
