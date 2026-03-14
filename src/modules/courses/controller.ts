@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import type { CoursesService } from "./service.js";
+import type { PaymentsService } from "../payments/service.js";
 import type {
   CreateCourseDto,
   UpdateCourseDto,
@@ -12,7 +13,10 @@ import { sendSuccess, sendPaginated } from "../../shared/utils/response.js";
  * Controller for course endpoints.
  */
 export class CoursesController {
-  constructor(private readonly coursesService: CoursesService) {}
+  constructor(
+    private readonly coursesService: CoursesService,
+    private readonly paymentsService: PaymentsService,
+  ) {}
 
   /** POST /courses */
   create = async (
@@ -138,12 +142,13 @@ export class CoursesController {
   ): Promise<void> => {
     try {
       const dto = req.body as InitiateEnrollmentDto;
-      const result = await this.coursesService.initiateEnrollment(
-        String(req.params["id"]),
+      const result = await this.paymentsService.initiatePayment(
         req.user!.userId,
+        String(req.params["id"]),
+        dto.phoneNumber,
         dto.paymentType,
       );
-      sendSuccess(res, result);
+      sendSuccess(res, result, 202);
     } catch (error) {
       next(error);
     }
@@ -197,11 +202,13 @@ export class CoursesController {
     next: NextFunction,
   ): Promise<void> => {
     try {
-      const result = await this.coursesService.initiateBalancePayment(
-        String(req.params["id"]),
+      const phoneNumber = (req.body as { phoneNumber: string }).phoneNumber;
+      const result = await this.paymentsService.initiateBalancePayment(
         req.user!.userId,
+        String(req.params["id"]),
+        phoneNumber,
       );
-      sendSuccess(res, result);
+      sendSuccess(res, result, 202);
     } catch (error) {
       next(error);
     }

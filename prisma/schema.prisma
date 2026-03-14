@@ -185,23 +185,28 @@ model Certificate {
 }
 
 model Transaction {
-  id                    String     @id @default(uuid())
-  enrollmentId          String
+  id                    String          @id @default(uuid())
+  enrollmentId          String?
   userId                String
   courseId              String
-  grossAmount           Decimal    @db.Decimal(10, 2)
-  platformFee           Decimal    @db.Decimal(10, 2)
-  tutorNetAmount        Decimal    @db.Decimal(10, 2)
-  currency              String     @default("usd")
-  providerTransactionId String     @unique
-  commissionRate        Decimal    @db.Decimal(5, 2)
-  createdAt             DateTime   @default(now())
-  course                Course     @relation(fields: [courseId], references: [id])
-  enrollment            Enrollment @relation(fields: [enrollmentId], references: [id])
-  user                  User       @relation(fields: [userId], references: [id])
+  phoneNumber           String
+  amount                Decimal         @db.Decimal(10, 2)
+  grossAmount           Decimal         @db.Decimal(10, 2)
+  platformFee           Decimal         @db.Decimal(10, 2)
+  tutorNetAmount        Decimal         @db.Decimal(10, 2)
+  currency              String          @default("UGX")
+  providerTransactionId String          @unique
+  commissionRate        Decimal         @db.Decimal(5, 2)
+  paymentType           PaymentStatus   @default(FULL)
+  status                PaymentTxStatus @default(INITIATED)
+  createdAt             DateTime        @default(now())
+  course                Course          @relation(fields: [courseId], references: [id])
+  enrollment            Enrollment?     @relation(fields: [enrollmentId], references: [id])
+  user                  User            @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([courseId])
+  @@index([status])
   @@index([providerTransactionId])
   @@map("transactions")
 }
@@ -378,4 +383,11 @@ enum DomainStatus {
 enum PaymentStatus {
   PARTIAL
   FULL
+}
+
+enum PaymentTxStatus {
+  INITIATED
+  PROCESSING
+  SUCCESS
+  FAILED
 }

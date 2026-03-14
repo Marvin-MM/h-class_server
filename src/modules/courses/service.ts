@@ -5,8 +5,7 @@ import type {
   UpdateCourseDto,
   ListCoursesDto,
 } from "./dto.js";
-import type { CourseResponse, EnrollmentInitResult } from "./types.js";
-import type { IPaymentGateway } from "../payments/gateway.js";
+import type { CourseResponse } from "./types.js";
 import {
   NotFoundError,
   ConflictError,
@@ -22,7 +21,6 @@ export class CoursesService {
   constructor(
     private readonly coursesRepository: CoursesRepository,
     private readonly prisma: PrismaClient,
-    private readonly paymentGateway: IPaymentGateway,
   ) {}
 
   /**
@@ -146,124 +144,6 @@ export class CoursesService {
     });
     logger.info("Course archived", { courseId });
     return this.toResponse(updated);
-  }
-
-  /**
-   * Initiates the enrollment payment flow.
-   * Uses a row-level lock in a transaction to prevent race conditions.
-   * Returns the Stripe client secret so the frontend can complete payment.
-   */
-  async initiateEnrollment(
-    courseId: string,
-    userId: string,
-    paymentType: "FULL" | "PARTIAL" = "FULL",
-  ): Promise<EnrollmentInitResult> {
-    return this.prisma.$transaction(async (tx) => {
-      // Lock the course row
-      const course = await this.coursesRepository.findByIdForUpdate(
-        courseId,
-        tx,
-      );
-      if (!course) throw new NotFoundError("Course", courseId);
-      if (course.status !== "PUBLISHED")
-        throw new ConflictError("Course is not available for enrollment");
-
-      // Check if already enrolled
-      const isEnrolled = await this.coursesRepository.isEnrolled(
-        userId,
-        courseId,
-      );
-      if (isEnrolled)
-        throw new ConflictError("You are already enrolled in this course");
-
-      // Create Stripe PaymentIntent with idempotency key
-      const idempotencyKey = `enroll:${userId}:${courseId}:${paymentType}`;
-      let amountToPay = Number(course.price);
-      if (paymentType === "PARTIAL") {
-        amountToPay = amountToPay * 0.6; // 60% partial payment
-      }
-      const priceInCents = Math.round(amountToPay * 100);
-
-      const paymentIntent = await this.paymentGateway.createPaymentIntent({
-        amount: priceInCents,
-        currency: "usd",
-        metadata: {
-          courseId,
-          userId,
-          commissionRate: course.commissionRate.toString(),
-          tutorId: course.tutorId,
-          paymentType,
-        },
-        idempotencyKey,
-      });
-
-      logger.info("Enrollment payment initiated", {
-        courseId,
-        userId,
-        paymentIntentId: paymentIntent.id,
-        paymentType,
-      });
-
-      return {
-        clientSecret: paymentIntent.clientSecret,
-        paymentIntentId: paymentIntent.id,
-      };
-    });
-  }
-
-  /**
-   * Initiates payment for the remaining balance of a course (the remaining 40%).
-   */
-  async initiateBalancePayment(
-    courseId: string,
-    userId: string,
-  ): Promise<EnrollmentInitResult> {
-    return this.prisma.$transaction(async (tx) => {
-      const course = await this.coursesRepository.findByIdForUpdate(
-        courseId,
-        tx,
-      );
-      if (!course) throw new NotFoundError("Course", courseId);
-
-      const enrollment = await this.prisma.enrollment.findUnique({
-        where: { userId_courseId: { userId, courseId } },
-      });
-
-      if (!enrollment)
-        throw new ConflictError("You are not enrolled in this course");
-      if (enrollment.paymentStatus === "FULL") {
-        throw new ConflictError("Your course balance is already fully paid");
-      }
-
-      // Remaining 40% balance
-      const amountToPay = Number(course.price) * 0.4;
-      const priceInCents = Math.round(amountToPay * 100);
-      const idempotencyKey = `balance:${userId}:${courseId}`;
-
-      const paymentIntent = await this.paymentGateway.createPaymentIntent({
-        amount: priceInCents,
-        currency: "usd",
-        metadata: {
-          courseId,
-          userId,
-          commissionRate: course.commissionRate.toString(),
-          tutorId: course.tutorId,
-          paymentType: "BALANCE", // Signals the webhook to upgrade PaymentStatus
-        },
-        idempotencyKey,
-      });
-
-      logger.info("Balance payment initiated", {
-        courseId,
-        userId,
-        paymentIntentId: paymentIntent.id,
-      });
-
-      return {
-        clientSecret: paymentIntent.clientSecret,
-        paymentIntentId: paymentIntent.id,
-      };
-    });
   }
 
   /** Gets the roster of enrolled students for a tutor's course. */

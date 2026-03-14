@@ -39,12 +39,19 @@ export const courseIdParamSchema = z.object({
   id: z.string().uuid("Invalid course ID"),
 });
 
-/** Schema for initiating enrollment. Allows partial payments (60%) */
+/** Schema for initiating enrollment (Marz Pay). */
 export const initiateEnrollmentSchema = z.object({
+  phoneNumber: z.string().min(9).max(15).regex(/^\+?[0-9]+$/, "Invalid phone number"),
   paymentType: z.enum(["FULL", "PARTIAL"]).default("FULL"),
+});
+
+/** Schema for paying the remaining 40% balance. */
+export const payBalanceSchema = z.object({
+  phoneNumber: z.string().min(9).max(15).regex(/^\+?[0-9]+$/, "Invalid phone number"),
 });
 
 export type CreateCourseDto = z.infer<typeof createCourseSchema>;
 export type UpdateCourseDto = z.infer<typeof updateCourseSchema>;
 export type ListCoursesDto = z.infer<typeof listCoursesSchema>;
 export type InitiateEnrollmentDto = z.infer<typeof initiateEnrollmentSchema>;
+export type PayBalanceDto = z.infer<typeof payBalanceSchema>;

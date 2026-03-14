@@ -55,9 +55,8 @@ export function createApp(container: Container) {
   // Cookie parser
   app.use(cookieParser());
 
-  // JSON body parser — applied to all routes EXCEPT the Stripe webhook
-  // (which needs express.raw() for signature verification)
-  app.use(/^(?!\/api\/v1\/payments\/webhook)/, express.json({ limit: "1mb" }));
+  // JSON body parser
+  app.use(express.json({ limit: "1mb" }));
   app.use(express.urlencoded({ extended: true }));
 
   // ─── Rate Limiters ─────────────────────────────────────────────

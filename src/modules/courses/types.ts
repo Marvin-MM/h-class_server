@@ -19,11 +19,6 @@ export interface CourseResponse {
   };
 }
 
-/** Enrollment initiation result (Stripe client secret). */
-export interface EnrollmentInitResult {
-  readonly clientSecret: string;
-  readonly paymentIntentId: string;
-}
 
 /** Enrollment response shape. */
 export interface EnrollmentResponse {

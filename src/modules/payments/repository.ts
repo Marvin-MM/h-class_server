@@ -2,65 +2,110 @@ import type { PrismaClient, Transaction, Prisma } from "@prisma/client";
 
 /**
  * Repository for payment/transaction database operations.
- * The transactions table is append-only: no update or delete methods exposed.
+ * Transactions are append-only: no update or delete exposed to higher layers.
  */
 export class PaymentsRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
-  /** Creates an immutable transaction record. */
+  /** Creates the initial "initiated" transaction record before calling the provider. */
   async createTransaction(data: {
-    enrollmentId: string;
     userId: string;
     courseId: string;
+    phoneNumber: string;
+    amount: number;
     grossAmount: number;
     platformFee: number;
     tutorNetAmount: number;
     currency: string;
     providerTransactionId: string;
     commissionRate: number;
+    paymentType?: "PARTIAL" | "FULL";
   }): Promise<Transaction> {
-    return this.prisma.transaction.create({ data });
+    return this.prisma.transaction.create({
+      data: {
+        ...data,
+        status: "INITIATED",
+        paymentType: data.paymentType ?? "FULL",
+      },
+    });
   }
 
-  /** Creates an enrollment and transaction atomically within a Prisma transaction. */
-  async createEnrollmentAndTransaction(
+  /** Atomically creates an enrollment and links it to an existing transaction. */
+  async createEnrollmentAndLinkTransaction(
     tx: Prisma.TransactionClient,
-    enrollment: {
+    data: {
+      transactionId: string;
       userId: string;
       courseId: string;
-      paymentStatus?: "PARTIAL" | "FULL";
+      paymentStatus: "PARTIAL" | "FULL";
     },
-    transaction: {
-      enrollmentId?: string;
-      userId: string;
-      courseId: string;
-      grossAmount: number;
-      platformFee: number;
-      tutorNetAmount: number;
-      currency: string;
-      providerTransactionId: string;
-      commissionRate: number;
-    },
-  ): Promise<{ enrollmentId: string; transactionId: string }> {
-    const enrollmentRecord = await tx.enrollment.create({
+  ): Promise<{ enrollmentId: string }> {
+    const enrollment = await tx.enrollment.create({
       data: {
-        userId: enrollment.userId,
-        courseId: enrollment.courseId,
-        paymentStatus: enrollment.paymentStatus ?? "FULL",
+        userId: data.userId,
+        courseId: data.courseId,
+        paymentStatus: data.paymentStatus,
       },
     });
 
-    const transactionRecord = await tx.transaction.create({
-      data: {
-        ...transaction,
-        enrollmentId: enrollmentRecord.id,
-      },
+    await tx.transaction.update({
+      where: { id: data.transactionId },
+      data: { enrollmentId: enrollment.id, status: "SUCCESS" },
     });
 
-    return {
-      enrollmentId: enrollmentRecord.id,
-      transactionId: transactionRecord.id,
-    };
+    return { enrollmentId: enrollment.id };
+  }
+
+  /** Upgrades an existing PARTIAL enrollment to FULL and marks the transaction SUCCESS. */
+  async upgradeEnrollmentToFull(
+    tx: Prisma.TransactionClient,
+    data: {
+      transactionId: string;
+      userId: string;
+      courseId: string;
+    },
+  ): Promise<{ enrollmentId: string }> {
+    const enrollment = await tx.enrollment.findUniqueOrThrow({
+      where: { userId_courseId: { userId: data.userId, courseId: data.courseId } },
+    });
+
+    await tx.enrollment.update({
+      where: { id: enrollment.id },
+      data: { paymentStatus: "FULL" },
+    });
+
+    await tx.transaction.update({
+      where: { id: data.transactionId },
+      data: { enrollmentId: enrollment.id, status: "SUCCESS" },
+    });
+
+    return { enrollmentId: enrollment.id };
+  }
+
+  /** Updates the provider-side UUID once the provider confirms the job was queued. */
+  async updateProviderState(
+    id: string,
+    data: { status: "INITIATED" | "PROCESSING" | "SUCCESS" | "FAILED"; providerTransactionId?: string },
+  ): Promise<void> {
+    await this.prisma.transaction.update({
+      where: { id },
+      data: {
+        status: data.status,
+        ...(data.providerTransactionId
+          ? { providerTransactionId: data.providerTransactionId }
+          : {}),
+      },
+    });
+  }
+
+  /** Finds a raw transaction by its internal ID. Used by the payment polling worker. */
+  async findById(id: string): Promise<Transaction | null> {
+    return this.prisma.transaction.findUnique({ where: { id } });
+  }
+
+  /** Idempotency: find a transaction by the provider UUID to skip double-processing. */
+  async findByProviderTransactionId(providerTransactionId: string): Promise<Transaction | null> {
+    return this.prisma.transaction.findUnique({ where: { providerTransactionId } });
   }
 
   /** Lists transactions for a specific user with pagination. */
@@ -82,35 +127,12 @@ export class PaymentsRepository {
     return { data, total };
   }
 
-  /** Lists transactions for a course (tutor view). */
-  async findByCourseId(
-    courseId: string,
-    page: number,
-    pageSize: number,
-  ): Promise<{ data: Transaction[]; total: number }> {
-    const where = { courseId };
-    const [data, total] = await this.prisma.$transaction([
-      this.prisma.transaction.findMany({
-        where,
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-        orderBy: { createdAt: "desc" },
-      }),
-      this.prisma.transaction.count({ where }),
-    ]);
-    return { data, total };
-  }
-
-  /** Gets financial summary with optional date range. */
+  /** Gets financial summary with optional date range (admin). */
   async getFinancialSummary(
     startDate?: Date,
     endDate?: Date,
-  ): Promise<{
-    totalGrossRevenue: number;
-    totalPlatformFees: number;
-    totalTutorPayouts: number;
-  }> {
-    const where: Prisma.TransactionWhereInput = {};
+  ): Promise<{ totalGrossRevenue: number; totalPlatformFees: number; totalTutorPayouts: number }> {
+    const where: Prisma.TransactionWhereInput = { status: "SUCCESS" };
     if (startDate || endDate) {
       where.createdAt = {
         ...(startDate ? { gte: startDate } : {}),
@@ -120,11 +142,7 @@ export class PaymentsRepository {
 
     const result = await this.prisma.transaction.aggregate({
       where,
-      _sum: {
-        grossAmount: true,
-        platformFee: true,
-        tutorNetAmount: true,
-      },
+      _sum: { grossAmount: true, platformFee: true, tutorNetAmount: true },
     });
 
     return {
@@ -132,14 +150,5 @@ export class PaymentsRepository {
       totalPlatformFees: Number(result._sum.platformFee ?? 0),
       totalTutorPayouts: Number(result._sum.tutorNetAmount ?? 0),
     };
-  }
-
-  /** Finds a transaction by provider transaction ID. */
-  async findByProviderTransactionId(
-    providerTransactionId: string,
-  ): Promise<Transaction | null> {
-    return this.prisma.transaction.findUnique({
-      where: { providerTransactionId },
-    });
   }
 }

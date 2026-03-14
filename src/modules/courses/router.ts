@@ -8,6 +8,7 @@ import {
   listCoursesSchema,
   courseIdParamSchema,
   initiateEnrollmentSchema,
+  payBalanceSchema,
 } from "./dto.js";
 
 /**
@@ -80,6 +81,7 @@ export function createCoursesRouter(
     authMiddleware,
     roleGuard("STUDENT"),
     validate(courseIdParamSchema, "params"),
+    validate(payBalanceSchema),
     controller.payBalance,
   );
   router.get(

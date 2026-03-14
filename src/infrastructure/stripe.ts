@@ -1,11 +1,4 @@
-import Stripe from "stripe";
-import type { AppConfig } from "../config/index.js";
-
 /**
- * Creates and configures a Stripe API client instance.
+ * @deprecated Stripe has been replaced by Marz Pay.
+ * This file is intentionally empty. The Stripe client is no longer used.
  */
-export function createStripeClient(config: AppConfig): Stripe {
-  return new Stripe(config.STRIPE_SECRET_KEY, {
-    typescript: true,
-  });
-}

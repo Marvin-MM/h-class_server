@@ -24,6 +24,9 @@ export const SESSION_REMINDER_QUEUE = "session-reminder" as const;
 /** Queue for cleaning up stale FCM push tokens. */
 export const PUSH_TOKEN_CLEANUP_QUEUE = "push-token-cleanup" as const;
 
+/** Queue for polling Marz Pay for payment status after a collection is initiated. */
+export const PAYMENT_VERIFICATION_QUEUE = "payment-verification" as const;
+
 // ─── Queue Creation ──────────────────────────────────────────────────────────
 
 /** Options shared by all queues. */
@@ -57,6 +60,9 @@ export function createQueues(options: QueueFactoryOptions) {
   const pushTokenCleanupQueue = new Queue(PUSH_TOKEN_CLEANUP_QUEUE, {
     connection,
   });
+  const paymentVerificationQueue = new Queue(PAYMENT_VERIFICATION_QUEUE, {
+    connection,
+  });
 
   return {
     emailQueue,
@@ -66,6 +72,7 @@ export function createQueues(options: QueueFactoryOptions) {
     auditArchiveQueue,
     sessionReminderQueue,
     pushTokenCleanupQueue,
+    paymentVerificationQueue,
   } as const;
 }
 

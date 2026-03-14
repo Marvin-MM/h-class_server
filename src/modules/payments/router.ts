@@ -1,14 +1,15 @@
 import { Router } from "express";
-import express from "express";
 import type { PaymentsController } from "./controller.js";
 import { validate } from "../../middleware/validate.js";
-import { connectOnboardingSchema, listTransactionsSchema } from "./dto.js";
+import {
+  initiatePaymentSchema,
+  initiateBalancePaymentSchema,
+  financialSummarySchema,
+} from "./dto.js";
 import { roleGuard } from "../../middleware/role-guard.js";
 
 /**
  * Creates the payments router.
- * NOTE: The webhook route uses express.raw() instead of express.json()
- * because Stripe requires the raw body for signature verification.
  */
 export function createPaymentsRouter(
   controller: PaymentsController,
@@ -17,28 +18,33 @@ export function createPaymentsRouter(
   >,
 ): Router {
   const router = Router();
+  router.use(authMiddleware);
 
-  // Webhook route — MUST use raw body parser, not JSON
+  // Students initiate payment (start Marz collection + enqueue BullMQ job)
   router.post(
-    "/webhook",
-    express.raw({ type: "application/json" }),
-    controller.handleWebhook,
+    "/initiate",
+    roleGuard("STUDENT"),
+    validate(initiatePaymentSchema),
+    controller.initiatePayment,
   );
 
-  // Authenticated routes
+  // Students pay remaining 40% balance
   router.post(
-    "/connect/onboarding",
-    authMiddleware,
-    roleGuard("TUTOR"),
-    validate(connectOnboardingSchema),
-    controller.connectOnboarding,
+    "/initiate-balance",
+    roleGuard("STUDENT"),
+    validate(initiateBalancePaymentSchema),
+    controller.initiateBalancePayment,
   );
 
+  // Any authenticated user can see their own transactions
+  router.get("/transactions", controller.getTransactions);
+
+  // Admin: financial summary
   router.get(
-    "/transactions",
-    authMiddleware,
-    validate(listTransactionsSchema, "query"),
-    controller.getTransactions,
+    "/summary",
+    roleGuard("ADMIN"),
+    validate(financialSummarySchema, "query"),
+    controller.getFinancialSummary,
   );
 
   return router;

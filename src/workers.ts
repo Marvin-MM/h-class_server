@@ -18,7 +18,12 @@ import {
   CERTIFICATE_COMPILATION_QUEUE,
   DOMAIN_PROVISIONING_QUEUE,
   AUDIT_ARCHIVE_QUEUE,
+  PAYMENT_VERIFICATION_QUEUE,
 } from "./infrastructure/bullmq.js";
+import { MarzPaymentGateway } from "./modules/payments/marz-adapter.js";
+import { PaymentsRepository } from "./modules/payments/repository.js";
+import { PaymentsService } from "./modules/payments/service.js";
+import { createQueues } from "./infrastructure/bullmq.js";
 import { logger } from "./shared/utils/logger.js";
 
 const config = loadConfig();
@@ -60,6 +65,68 @@ const emailWorker = new Worker(
   },
   { connection, concurrency: 5 },
 );
+
+// ─── Payment Verification Worker ─────────────────────────────────
+// Polls Marz Pay until a definitive payment status is reached,
+// then calls reconcilePaymentOutcome() to create the enrollment atomically.
+const paymentGateway = new MarzPaymentGateway(config);
+const paymentsRepository = new PaymentsRepository(prisma);
+const queues = createQueues({ connection: redis as any });
+const paymentsService = new PaymentsService(
+  paymentsRepository,
+  paymentGateway,
+  prisma,
+  queues.paymentVerificationQueue,
+);
+
+const paymentVerificationWorker = new Worker(
+  PAYMENT_VERIFICATION_QUEUE,
+  async (job: Job) => {
+    const { transactionId, providerUuid } = job.data as {
+      transactionId: string;
+      providerUuid: string;
+    };
+
+    logger.info("[PaymentWorker] Checking Marz status", { transactionId, providerUuid });
+
+    // Idempotency: bail early if already reconciled
+    const tx = await prisma.transaction.findUnique({
+      where: { id: transactionId },
+    });
+    if (!tx) {
+      logger.warn("[PaymentWorker] Transaction not found", { transactionId });
+      return;
+    }
+    if (tx.status !== "PROCESSING") {
+      logger.info("[PaymentWorker] Already resolved, skipping", { transactionId, status: tx.status });
+      return;
+    }
+
+    // Poll the provider
+    const result = await paymentGateway.checkStatus(providerUuid);
+
+    if (result.status === "pending") {
+      // Still pending — throw so BullMQ retries with exponential backoff
+      throw new Error(`[PaymentWorker] Provider still processing ${transactionId}`);
+    }
+
+    // Definitive status reached — reconcile
+    await paymentsService.reconcilePaymentOutcome(transactionId, result.status);
+  },
+  {
+    connection,
+    concurrency: 5,
+  },
+);
+
+paymentVerificationWorker.on("completed", (job) => {
+  logger.info("[PaymentWorker] Job completed", { jobId: job.id });
+});
+paymentVerificationWorker.on("failed", (job, err) => {
+  // Suppress noisy 'still processing' retries from the logs
+  if (err.message.includes("still processing")) return;
+  logger.error("[PaymentWorker] Job failed", { jobId: job?.id, error: err.message });
+});
 
 // ─── Push Notification Worker ────────────────────────────────────
 const pushWorker = new Worker(

@@ -8,7 +8,6 @@ import { createPrismaClient } from "./infrastructure/prisma.js";
 import { createRedisClient } from "./infrastructure/redis.js";
 import { S3StorageClient } from "./infrastructure/s3.js";
 import { createStreamVideoClient } from "./infrastructure/stream-video.js";
-import { createStripeClient } from "./infrastructure/stripe.js";
 import { createCloudinaryClient } from "./infrastructure/cloudinary.js";
 import { createQueues } from "./infrastructure/bullmq.js";
 import { withAuditLogging } from "./modules/audit/middleware.js";
@@ -46,8 +45,8 @@ import { DomainsService } from "./modules/domains/service.js";
 import { CalendarService } from "./modules/calendar/service.js";
 import { AdminService } from "./modules/admin/service.js";
 
-// Stripe adapter
-import { StripePaymentGateway } from "./modules/payments/stripe-adapter.js";
+// Marz Pay adapter
+import { MarzPaymentGateway } from "./modules/payments/marz-adapter.js";
 
 // Controllers
 import { AuthController } from "./modules/auth/controller.js";
@@ -81,13 +80,11 @@ export function createContainer(config: AppConfig) {
   const s3Client = new S3StorageClient(config);
   const streamVideoClient = createStreamVideoClient(config);
   const cloudinaryClient = createCloudinaryClient(config);
-  const stripe = createStripeClient(config);
-
-  // Queues — uses the existing createQueues factory
+  // Queues
   const queues = createQueues({ connection: redis });
 
-  // Payment gateway
-  const paymentGateway = new StripePaymentGateway(stripe, config);
+  // Payment gateway (Marz Pay)
+  const paymentGateway = new MarzPaymentGateway(config);
 
   // Repositories
   const authRepository = new AuthRepository(prisma);
@@ -125,12 +122,12 @@ export function createContainer(config: AppConfig) {
   const coursesService = new CoursesService(
     coursesRepository,
     prisma,
-    paymentGateway,
   );
   const paymentsService = new PaymentsService(
     paymentsRepository,
     paymentGateway,
     prisma,
+    queues.paymentVerificationQueue,
   );
   const sessionsService = new SessionsService(
     sessionsRepository,
@@ -173,7 +170,7 @@ export function createContainer(config: AppConfig) {
   const authController = new AuthController(authService, config);
   const usersController = new UsersController(usersService);
   const mediaController = new MediaController(mediaService);
-  const coursesController = new CoursesController(coursesService);
+  const coursesController = new CoursesController(coursesService, paymentsService);
   const paymentsController = new PaymentsController(paymentsService);
   const sessionsController = new SessionsController(sessionsService);
   const notesController = new NotesController(notesService);

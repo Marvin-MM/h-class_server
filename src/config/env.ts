@@ -18,9 +18,8 @@ export interface AppConfig {
   readonly AWS_ACCESS_KEY_ID: string;
   readonly AWS_SECRET_ACCESS_KEY: string;
   readonly S3_BUCKET_NAME: string;
-  readonly STRIPE_SECRET_KEY: string;
-  readonly STRIPE_WEBHOOK_SECRET: string;
-  readonly STRIPE_PUBLISHABLE_KEY: string;
+  readonly MARZ_API_BASE_URL: string;
+  readonly MARZ_API_BASE64_AUTH: string;
   readonly GETSTREAM_API_KEY: string;
   readonly GETSTREAM_API_SECRET: string;
   readonly GETSTREAM_APP_ID: string;
@@ -71,9 +70,8 @@ export function loadConfig(): AppConfig {
     AWS_ACCESS_KEY_ID: str({ desc: "AWS access key ID" }),
     AWS_SECRET_ACCESS_KEY: str({ desc: "AWS secret access key" }),
     S3_BUCKET_NAME: str({ desc: "S3 bucket name for file uploads" }),
-    STRIPE_SECRET_KEY: str({ desc: "Stripe secret API key" }),
-    STRIPE_WEBHOOK_SECRET: str({ desc: "Stripe webhook signing secret" }),
-    STRIPE_PUBLISHABLE_KEY: str({ desc: "Stripe publishable key" }),
+    MARZ_API_BASE_URL: str({ desc: "Marz Pay API base URL" }),
+    MARZ_API_BASE64_AUTH: str({ desc: "Marz Pay Base64-encoded API credentials" }),
     GETSTREAM_API_KEY: str({ desc: "GetStream API key" }),
     GETSTREAM_API_SECRET: str({ desc: "GetStream API secret" }),
     GETSTREAM_APP_ID: str({ desc: "GetStream application ID" }),

@@ -1,9 +1,16 @@
 import { z } from "zod";
 
-/** Schema for requesting Connect onboarding. */
-export const connectOnboardingSchema = z.object({
-  refreshUrl: z.string().url(),
-  returnUrl: z.string().url(),
+/** Schema for initiating a payment (enrollment). */
+export const initiatePaymentSchema = z.object({
+  courseId: z.string().uuid(),
+  phoneNumber: z.string().min(9).max(15).regex(/^\+?[0-9]+$/, "Invalid phone number"),
+  paymentType: z.enum(["FULL", "PARTIAL"]).default("FULL"),
+});
+
+/** Schema for initiating a balance payment. */
+export const initiateBalancePaymentSchema = z.object({
+  courseId: z.string().uuid(),
+  phoneNumber: z.string().min(9).max(15).regex(/^\+?[0-9]+$/, "Invalid phone number"),
 });
 
 /** Schema for paginated transaction listing. */
@@ -18,6 +25,7 @@ export const financialSummarySchema = z.object({
   endDate: z.coerce.date().optional(),
 });
 
-export type ConnectOnboardingDto = z.infer<typeof connectOnboardingSchema>;
+export type InitiatePaymentDto = z.infer<typeof initiatePaymentSchema>;
+export type InitiateBalancePaymentDto = z.infer<typeof initiateBalancePaymentSchema>;
 export type ListTransactionsDto = z.infer<typeof listTransactionsSchema>;
 export type FinancialSummaryDto = z.infer<typeof financialSummarySchema>;
