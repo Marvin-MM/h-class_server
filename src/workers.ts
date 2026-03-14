@@ -258,18 +258,69 @@ function renderTemplate(
   data: Record<string, string>,
 ): string {
   const templates: Record<string, (d: Record<string, string>) => string> = {
+    "verify-email": (d) => `
+      <div style="font-family: 'Inter', sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #1f2937;">
+        <div style="background: linear-gradient(135deg, #6366f1, #a855f7); padding: 30px; border-radius: 12px; text-align: center; margin-bottom: 30px;">
+          <h1 style="color: #ffffff; margin: 0; font-size: 24px;">Verify Your Email</h1>
+        </div>
+        <div style="padding: 0 10px;">
+          <p style="font-size: 16px; line-height: 24px;">Hi ${d["firstName"]},</p>
+          <p style="font-size: 16px; line-height: 24px;">Welcome to H-Class LMS! Please use the following code to verify your email address:</p>
+          <div style="background: #f3f4f6; border-radius: 8px; padding: 20px; text-align: center; margin: 30px 0;">
+            <span style="font-size: 32px; font-weight: 700; letter-spacing: 8px; color: #4f46e5;">${d["otp"]}</span>
+          </div>
+          <p style="font-size: 14px; color: #6b7280; text-align: center;">This code will expire in ${d["expiresInMinutes"]} minutes.</p>
+          <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 30px 0;" />
+          <p style="font-size: 12px; color: #9ca3af; text-align: center;">If you didn't create an account with us, you can safely ignore this email.</p>
+        </div>
+      </div>
+    `,
+    "password-reset": (d) => `
+      <div style="font-family: 'Inter', sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #1f2937;">
+        <div style="background: linear-gradient(135deg, #f59e0b, #ef4444); padding: 30px; border-radius: 12px; text-align: center; margin-bottom: 30px;">
+          <h1 style="color: #ffffff; margin: 0; font-size: 24px;">Reset Your Password</h1>
+        </div>
+        <div style="padding: 0 10px;">
+          <p style="font-size: 16px; line-height: 24px;">Hi ${d["firstName"]},</p>
+          <p style="font-size: 16px; line-height: 24px;">We received a request to reset your password. Use the code below to proceed:</p>
+          <div style="background: #f3f4f6; border-radius: 8px; padding: 20px; text-align: center; margin: 30px 0;">
+            <span style="font-size: 32px; font-weight: 700; letter-spacing: 8px; color: #ea580c;">${d["otp"]}</span>
+          </div>
+          <p style="font-size: 14px; color: #6b7280; text-align: center;">This code will expire in ${d["expiresInMinutes"]} minutes.</p>
+          <p style="font-size: 14px; color: #6b7280;">If you didn't request this, please ensure your account is secure.</p>
+          <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 30px 0;" />
+          <p style="font-size: 12px; color: #9ca3af; text-align: center;">H-Class LMS Security Team</p>
+        </div>
+      </div>
+    `,
     welcome: (d) => `
-      <h1>Welcome to H-Class LMS, ${d["firstName"]}!</h1>
-      <p>Your account has been created successfully. Start exploring courses today.</p>
+      <div style="font-family: 'Inter', sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #1f2937;">
+        <div style="background: linear-gradient(135deg, #10b981, #3b82f6); padding: 40px; border-radius: 12px; text-align: center; margin-bottom: 30px;">
+          <h1 style="color: #ffffff; margin: 0; font-size: 28px;">Welcome to H-Class, ${d["firstName"]}!</h1>
+        </div>
+        <p style="font-size: 18px; line-height: 28px; text-align: center;">Your professional learning journey starts here.</p>
+        <div style="text-align: center; margin: 40px 0;">
+          <a href="#" style="background: #4f46e5; color: #ffffff; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: 600; display: inline-block;">Explore All Courses</a>
+        </div>
+      </div>
     `,
     "tutor-approved": (d) => `
-      <h1>Congratulations, ${d["firstName"]}!</h1>
-      <p>Your tutor application has been approved. You can now create and manage courses.</p>
+      <div style="font-family: 'Inter', sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #1f2937;">
+        <div style="background: #ecfdf5; border-left: 4px solid #10b981; padding: 20px; border-radius: 4px;">
+          <h2 style="color: #065f46; margin-top: 0;">Congratulations, ${d["firstName"]}!</h2>
+          <p style="color: #047857;">Your tutor application has been approved. You can now access your dashboard and create courses.</p>
+        </div>
+      </div>
     `,
     "tutor-denied": (d) => `
-      <h1>Application Update</h1>
-      <p>Dear ${d["firstName"]}, your tutor application was not approved.</p>
-      <p>Reason: ${d["reason"]}</p>
+      <div style="font-family: 'Inter', sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #1f2937;">
+        <p>Dear ${d["firstName"]},</p>
+        <p>Your tutor application was not approved at this time.</p>
+        <div style="background: #fff1f2; padding: 15px; border-radius: 8px; margin: 20px 0;">
+          <strong style="color: #9f1239;">Reason:</strong> ${d["reason"]}
+        </div>
+        <p>You can adjust your profile and apply again later.</p>
+      </div>
     `,
   };
 
