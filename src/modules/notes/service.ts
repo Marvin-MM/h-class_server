@@ -110,7 +110,7 @@ export class NotesService {
 
     const downloadUrl = await this.s3Client.generatePresignedGetUrl(
       note.s3Key,
-      3600,
+      604800, // 7 days (max for AWS IAM long-term credentials)
     );
     return { downloadUrl };
   }
@@ -149,7 +149,7 @@ export class NotesService {
   }): Promise<NoteResponse> {
     const downloadUrl = await this.s3Client.generatePresignedGetUrl(
       note.s3Key,
-      3600,
+      604800, // 7 days
     );
     return {
       id: note.id,

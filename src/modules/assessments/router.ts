@@ -10,6 +10,7 @@ import {
   assessmentIdParamSchema,
   submissionIdParamSchema,
 } from "./dto.js";
+import multer from "multer";
 
 export function createAssessmentsRouter(
   controller: AssessmentsController,
@@ -21,17 +22,21 @@ export function createAssessmentsRouter(
   const router = Router();
   router.use(authMiddleware);
 
+  const upload = multer();
+
   // ─── Tutor: upload assessment file + create assessment ──────────────────────
   router.post(
     "/upload-url",
     roleGuard("TUTOR"),
     uploadLimiter,
+    upload.none(),
     validate(assessmentUploadUrlSchema),
     controller.getUploadUrl,
   );
   router.post(
     "/",
     roleGuard("TUTOR"),
+    upload.none(),
     validate(createAssessmentSchema),
     controller.create,
   );
@@ -49,12 +54,14 @@ export function createAssessmentsRouter(
     "/:id/submit-url",
     roleGuard("STUDENT"),
     uploadLimiter,
+    upload.none(),
     validate(assessmentIdParamSchema, "params"),
     controller.getSubmitUrl,
   );
   router.post(
     "/:id/submit",
     roleGuard("STUDENT"),
+    upload.none(),
     validate(assessmentIdParamSchema, "params"),
     validate(submitAssessmentSchema),
     controller.submit,

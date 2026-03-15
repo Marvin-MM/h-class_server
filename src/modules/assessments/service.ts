@@ -263,7 +263,7 @@ export class AssessmentsService {
 
     const downloadUrl = await this.s3Client.generatePresignedGetUrl(
       submission.s3Key,
-      3600,
+      604800, // 7 days
     );
     return { downloadUrl };
   }
@@ -412,7 +412,7 @@ export class AssessmentsService {
     updatedAt: Date;
   }): Promise<AssessmentResponse> {
     const downloadUrl = a.s3Key
-      ? await this.s3Client.generatePresignedGetUrl(a.s3Key, 3600)
+      ? await this.s3Client.generatePresignedGetUrl(a.s3Key, 604800) // 7 days
       : undefined;
     return {
       id: a.id,
@@ -460,7 +460,7 @@ export class AssessmentsService {
   }): Promise<SubmissionResponse> {
     const downloadUrl = await this.s3Client.generatePresignedGetUrl(
       s.s3Key,
-      3600,
+      604800, // 7 days
     );
     return {
       id: s.id,

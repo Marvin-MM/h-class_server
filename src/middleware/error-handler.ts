@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import { Prisma } from "@prisma/client";
+import { MulterError } from "multer";
 import {
   AppError,
   ValidationError,
@@ -42,6 +43,12 @@ export function errorHandler(
       return;
     }
     sendError(res, err.statusCode, err.errorCode, err.message);
+    return;
+  }
+
+  // Handle improperly formatted multipart/form-data payloads (e.g. from Postman)
+  if (err instanceof MulterError) {
+    sendError(res, 400, "VALIDATION_ERROR", `Form upload error: ${err.message}`);
     return;
   }
 
